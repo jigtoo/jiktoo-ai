@@ -1,0 +1,24 @@
+{
+    "mcpServers": {
+        "supabase-db": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-postgres",
+                "postgresql://postgres:Maree112800!@db.hfvxhehemmekcbqpafvy.supabase.co:5432/postgres"
+            ],
+            "env": {
+                "PGSSLMODE": "require"
+            }
+        },
+        "jiktoo-terminal": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "C:\\Users\\USER\\Downloads\\직투\\copy-of-sepa-ai",
+                "C:\\Users\\USER\\Downloads\\직투\\JIKTOO-collector"
+            ]
+        }
+    }
+}

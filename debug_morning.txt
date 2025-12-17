@@ -1,0 +1,208 @@
+
+import { telegramService } from '../telegramService';
+import { supabase } from '../supabaseClient';
+import { generateContentWithRetry } from '../gemini/client';
+import type { MarketTarget } from '../../types';
+import { sanitizeJsonString } from '../utils/jsonUtils';
+
+interface MorningBriefing {
+    title: string;
+    summary: string;
+    keyPoints: string[];
+}
+
+class MorningBriefingScheduler {
+    private intervalId: NodeJS.Timeout | null = null;
+    private isRunning: boolean = false;
+
+    public start() {
+        if (this.isRunning) return;
+        this.isRunning = true;
+        console.log('[MorningBriefing] Scheduler started');
+
+        // Check every minute
+        this.intervalId = setInterval(() => {
+            this.checkAndRun();
+        }, 60000);
+
+        // Initial check
+        this.checkAndRun();
+
+        // Check for missed briefings on startup (e.g. if app was sleeping)
+        this.checkMissedBriefings();
+    }
+
+    public stop() {
+        this.isRunning = false;
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+        }
+        console.log('[MorningBriefing] Scheduler stopped');
+    }
+
+    private async checkAndRun() {
+        const now = new Date();
+        const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+        const hour = kstNow.getHours();
+        const minute = kstNow.getMinutes();
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        const dateString = kstNow.toISOString().split('T')[0];
+
+        // KR Market Briefing at 08:00 KST
+        if (timeString === '08:00') {
+            await this.runBriefing('KR', dateString);
+        }
+
+        // US Market Briefing at 22:30 KST
+        if (timeString === '22:30') {
+            await this.runBriefing('US', dateString);
+        }
+    }
+
+    private async checkMissedBriefings() {
+        console.log('[MorningBriefing] Checking for missed briefings...');
+        const now = new Date();
+        const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+        const hour = kstNow.getHours();
+        const dateString = kstNow.toISOString().split('T')[0];
+
+        // If it's past 08:00 KST, check if we missed KR briefing
+        if (hour >= 8) {
+            await this.runBriefing('KR', dateString);
+        }
+
+        // If it's past 22:30 KST (approx hour >= 22 or 23), check if we missed US briefing
+        // We use hour >= 23 or (hour == 22 and minute >= 30) for strictness, but simply hour >= 23 covers most "missed" cases.
+        // Let's be generous: if it's past 22:00, we check.
+        if (hour >= 23 || (hour === 22 && kstNow.getMinutes() >= 30)) {
+            await this.runBriefing('US', dateString);
+        }
+    }
+
+    public async runBriefing(market: MarketTarget, date: string, force: boolean = false) {
+        console.log(`[MorningBriefing] Running briefing for ${market} on ${date} (Force: ${force})`);
+
+        // Check if already exists (skip if force=true)
+        if (!supabase) {
+            console.warn('[MorningBriefing] Supabase client not available/initialized');
+            return;
+        }
+
+        if (!force) {
+            const { data: existing } = await supabase
+                .from('morning_briefings')
+                .select('id')
+                .eq('market_target', market)
+                .eq('date', date)
+                .maybeSingle();
+
+            if (existing) {
+                console.log(`[MorningBriefing] Briefing already exists for ${market} on ${date}`);
+                return;
+            }
+        }
+
+        try {
+            // 1. Generate Briefing Content
+            const briefing = await this.generateBriefingContent(market);
+
+            // 2. Save to Supabase (Original Table)
+            const { error } = await supabase.from('morning_briefings').insert({
+                market_target: market,
+                date: date,
+                title: briefing.title,
+                summary: briefing.summary,
+                key_points: briefing.keyPoints
+            } as any);
+
+            if (error) console.error('[MorningBriefing] DB Save Error:', error);
+
+            // [NEW] Also save to 'user_intelligence_briefings' for Dashboard Visibility
+            await supabase.from('user_intelligence_briefings').insert({
+                channel_key: 'JIKTOO_BRIEFING',
+                content: `[${briefing.title}]\n\n?åç **Í∏ÄÎ°úÎ≤å ?ïÏÑ∏ & ?úÏû• ?îÏïΩ**:\n${briefing.summary}\n\n?ìä **?µÏã¨ ?§Ìè¨?∏Ìä∏**:\n${briefing.keyPoints.map(p => `- ${p}`).join('\n')}`,
+                related_tickers: market === 'KR' ? 'KOSPI,KOSDAQ' : 'SPX,NDX',
+                source_url: 'https://jiktoo.ai/briefing',
+                created_at: new Date().toISOString()
+            } as any);
+
+            // 3. Send Telegram
+            const messageBody = `
+${briefing.summary}
+
+?ìä **?µÏã¨ ?¨Ïù∏??*
+${briefing.keyPoints.map(p => `- ${p}`).join('\n')}
+            `.trim();
+
+            await telegramService.sendMessage({
+                title: `[ÏßÅÌà¨ AI] ${briefing.title}`,
+                body: messageBody,
+                urgency: 'high',
+                emoji: '?åç'
+            });
+            console.log(`[MorningBriefing] Completed for ${market}`);
+
+        } catch (error) {
+            console.error(`[MorningBriefing] Failed:`, error);
+        }
+    }
+
+
+
+    private async generateBriefingContent(market: MarketTarget): Promise<MorningBriefing> {
+        const now = new Date();
+        const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+        const hour = kstNow.getHours();
+
+        let briefingType = "Morning Briefing";
+        if (hour >= 9 && hour < 15) briefingType = "Intraday Briefing (??¢√è¬ß√?√é?è√•√é¬∂¬®KRW";
+        else if (hour >= 15) briefingType = "Closing Briefing (√é√ü√†√ç?û√?√é?è√•√é¬∂¬®KRW";
+
+        const prompt = `
+You are an expert financial analyst providing a "${briefingType}" for the ${market === 'KR' ? 'South Korean (KOSPI/KOSDAQ)' : 'US (NYSE/NASDAQ)'} market.
+Current Date & Time (KST): ${kstNow.toLocaleString('ko-KR')}
+
+**CRITICAL TASK:**
+1. **USE GOOGLE SEARCH** to find the absolute LATEST market news, index values, and economic events.
+2. **GLOBAL MACRO SCOPE:** The user specifically requests "Global Geopolitics & Macro Flow".
+   - Include updates on **US/China Relations, Middle East tensions, Ukraine/Russia** if relevant.
+   - Check **Oil (WTI), Gold, and US 10Y Treasury Yields**.
+   - Explain how these global factors are impacting the ${market} market TODAY.
+3. **VERIFY FACTS:** Every claim must be backed by real-time data found via search.
+
+**Output Format (JSON):**
+{
+    "title": "Brief but catchy title reflecting the GLOBAL & LOCAL market mood",
+    "summary": "A comprehensive 4-5 sentence summary. Start with the Global Macro context (Wars, Rates, Oil) and connect it to the local market performance.",
+    "keyPoints": [
+        "Global: [Major Geopolitical/Macro Event]",
+        "Market: [Index Performance & Main Driver]",
+        "Sector: [Leading/Lagging Sectors]",
+        "Outlook: [Short-term Forecast]"
+    ]
+}
+
+**Strict Formatting Rules:**
+- **Stock Names:** ALWAYS use the format **"Stock Name (Ticker)"** (e.g., ?ºÏÑ±?ÑÏûê(005930), Tesla(TSLA)). NEVER use ticker alone.
+- **Language:** Use professional Korean.
+- **Output:** Respond ONLY with a valid JSON object wrapped in markdown code blocks:
+\`\`\`json
+{...}
+\`\`\`
+`;
+
+        const response = await generateContentWithRetry({
+            model: "gemini-1.5-flash",
+            contents: prompt,
+            config: {
+                // responseMimeType: "application/json", // Conflicts with tools
+                tools: [{ googleSearch: {} }] // Added Google Search Tool
+            }
+        });
+
+        return JSON.parse(sanitizeJsonString(response.text || '{}'));
+    }
+}
+
+export const morningBriefingScheduler = new MorningBriefingScheduler();

@@ -1,0 +1,25 @@
+name: Lint Checks
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint-typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for JIKTOO typos
+        run: |
+          # The grep command will exit with status 1 if no lines are selected (success), and 0 if some lines are selected (failure for our case).
+          # We check the output of grep. If it finds something, we print an error and exit with 1 to fail the job.
+          if grep -r -i -E '\b(jiktu|jigtu|jictu|jiktoo|jigtoo|jictoo)\b' --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=build . ; then
+            echo "::error::Found forbidden JIKTOO typos. Please correct them to 'JIKTOO' and ensure all internal identifiers follow this standard."
+            exit 1
+          else
+            echo "No JIKTOO typos found. Check passed."
+            exit 0
+          fi

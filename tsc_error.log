@@ -1,0 +1,75 @@
+﻿scripts/upload-to-supabase.mjs(1,1): error TS1490: File appears to be binary.
+services/api/kiwoomService.ts(157,57): error TS1003: Identifier expected.
+services/api/kiwoomService.ts(157,60): error TS1005: ':' expected.
+services/appConfig.ts(10,22): error TS1005: ';' expected.
+services/appConfig.ts(31,26): error TS1005: ';' expected.
+services/appConfig.ts(47,15): error TS1005: ';' expected.
+services/AutoPilotController.ts(289,1): error TS1160: Unterminated template literal.
+services/dbSignals.ts(46,15): error TS1005: ';' expected.
+services/dbSignals.ts(62,26): error TS1005: ';' expected.
+services/gemini/stockDiscoveryService.ts(55,65): error TS1005: ',' expected.
+services/gemini/stockDiscoveryService.ts(161,2): error TS1005: ')' expected.
+services/marketInfo.ts(3,70): error TS1005: ',' expected.
+services/marketInfo.ts(3,75): error TS1005: ',' expected.
+services/marketInfo.ts(3,106): error TS1002: Unterminated string literal.
+services/marketInfo.ts(4,5): error TS1005: ':' expected.
+services/marketInfo.ts(4,7): error TS1005: ',' expected.
+services/marketInfo.ts(4,9): error TS1136: Property assignment expected.
+services/marketInfo.ts(4,17): error TS1003: Identifier expected.
+services/marketInfo.ts(4,40): error TS1005: ':' expected.
+services/marketInfo.ts(4,52): error TS1003: Identifier expected.
+services/marketInfo.ts(4,55): error TS1005: ':' expected.
+services/marketInfo.ts(4,68): error TS1003: Identifier expected.
+services/marketInfo.ts(4,77): error TS1005: ':' expected.
+services/marketInfo.ts(4,100): error TS1003: Identifier expected.
+services/marketInfo.ts(4,102): error TS1005: ':' expected.
+services/marketInfo.ts(5,1): error TS1128: Declaration or statement expected.
+services/SniperTriggerService.ts(158,43): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,47): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,51): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,62): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,71): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,82): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,87): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,99): error TS1005: ',' expected.
+services/SniperTriggerService.ts(158,102): error TS1005: ')' expected.
+services/SniperTriggerService.ts(158,119): error TS1109: Expression expected.
+services/SniperTriggerService.ts(158,120): error TS1109: Expression expected.
+services/SniperTriggerService.ts(164,35): error TS1005: ';' expected.
+services/SniperTriggerService.ts(164,43): error TS1005: ':' expected.
+services/SniperTriggerService.ts(164,46): error TS1109: Expression expected.
+services/SniperTriggerService.ts(164,50): error TS1005: ';' expected.
+services/SniperTriggerService.ts(164,67): error TS1109: Expression expected.
+services/SniperTriggerService.ts(178,40): error TS1005: ';' expected.
+services/SniperTriggerService.ts(178,47): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(178,50): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(178,55): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(178,69): error TS1128: Declaration or statement expected.
+services/SniperTriggerService.ts(187,35): error TS1005: ';' expected.
+services/SniperTriggerService.ts(187,53): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(187,72): error TS1435: Unknown keyword or identifier. Did you mean 'new'?
+services/SniperTriggerService.ts(187,76): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(207,39): error TS1005: ';' expected.
+services/SniperTriggerService.ts(207,72): error TS1005: ';' expected.
+services/SniperTriggerService.ts(207,75): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(207,95): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(207,101): error TS1128: Declaration or statement expected.
+services/SniperTriggerService.ts(252,49): error TS1005: ':' expected.
+services/SniperTriggerService.ts(252,62): error TS1005: ';' expected.
+services/SniperTriggerService.ts(252,80): error TS1005: ';' expected.
+services/SniperTriggerService.ts(252,91): error TS1005: '(' expected.
+services/SniperTriggerService.ts(252,92): error TS1005: ';' expected.
+services/SniperTriggerService.ts(252,104): error TS1003: Identifier expected.
+services/SniperTriggerService.ts(261,35): error TS1005: ';' expected.
+services/SniperTriggerService.ts(261,47): error TS1005: ')' expected.
+services/SniperTriggerService.ts(261,61): error TS1434: Unexpected keyword or identifier.
+services/SniperTriggerService.ts(261,76): error TS1005: ')' expected.
+services/SniperTriggerService.ts(261,106): error TS1128: Declaration or statement expected.
+services/SniperTriggerService.ts(267,28): error TS1109: Expression expected.
+services/SniperTriggerService.ts(267,43): error TS1005: ':' expected.
+services/SniperTriggerService.ts(267,73): error TS1128: Declaration or statement expected.
+services/SniperTriggerService.ts(267,74): error TS1128: Declaration or statement expected.
+services/SniperTriggerService.ts(269,27): error TS1005: ';' expected.
+services/SniperTriggerService.ts(270,23): error TS1005: ';' expected.
+services/SniperTriggerService.ts(280,9): error TS1472: 'catch' or 'finally' expected.
+services/SniperTriggerService.ts(305,5): error TS1128: Declaration or statement expected.
