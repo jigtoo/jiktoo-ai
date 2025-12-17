@@ -29,8 +29,10 @@ export const AlphaLinkDashboard: React.FC<AlphaLinkDashboardProps> = ({ alphaLin
         }
 
         // CRITICAL FIX: Filter out empty/invalid playbooks
+        // CRITICAL FIX: Filter out empty/invalid playbooks AND low confidence ones
+        // User Request: Ignore scores around 55. Threshold set to 70.
         const validPlaybooks = playbooks.filter(playbook =>
-            playbook.aiConfidence > 0 &&
+            playbook.aiConfidence >= 70 &&
             playbook.strategySummary &&
             playbook.strategySummary.trim() !== '' &&
             !playbook.strategySummary.includes('제공되지 않았습니다')
