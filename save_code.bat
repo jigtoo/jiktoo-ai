@@ -22,7 +22,7 @@ git push
 
 echo.
 echo ========================================================
-echo   ✅ SUCCESS! Code saved to GitHub & Vercel.
+echo   ✅ SUCCESS! Code saved to GitHub and Vercel.
 echo ========================================================
 echo.
 pause
