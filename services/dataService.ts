@@ -46,10 +46,11 @@ export async function fetchLatestPrice(ticker: string, stockName: string, market
     try {
         if (IS_KIS_PROXY_ENABLED) return await _fetchPriceViaKisProxy(ticker, marketTarget);
     } catch (error) {
-        console.warn(`[Data] Fallback for ${ticker}`);
-        return { price: 0, changeRate: 0, volume: 0, timestamp: 'Failed' };
+        // [ENHANCED] More visible error logging
+        console.error(`[Data] ❌ Price fetch FAILED for ${ticker} (${stockName}):`, error);
+        return { price: 0, changeRate: 0, volume: 0, timestamp: 'FETCH_FAILED' };
     }
-    return { price: 0, changeRate: 0, volume: 0, timestamp: 'Failed' };
+    return { price: 0, changeRate: 0, volume: 0, timestamp: 'FETCH_FAILED' };
 }
 
 export const _fetchLatestPrice = fetchLatestPrice;
@@ -128,8 +129,9 @@ export async function fetchCandles(ticker: string, timeframe: 'day' | '60' | '1'
             const response = await fetch(`${KIS_PROXY_URL}/daily-price?ticker=${stockCode}&market=KR&period=${count}`);
             if (response.ok) {
                 const data = await response.json();
-                if (Array.isArray(data.output)) {
-                    return data.output.map((item: any) => ({
+                // [FIX] KIS API returns data.output2, not data.output
+                if (Array.isArray(data.output2)) {
+                    return data.output2.map((item: any) => ({
                         date: item.stck_bsop_date,
                         open: parseFloat(item.stck_oprc),
                         high: parseFloat(item.stck_hgpr),
@@ -144,11 +146,18 @@ export async function fetchCandles(ticker: string, timeframe: 'day' | '60' | '1'
 
     // 3. Fallback to Synthetic Mock Data (Last Resort for Time Machine)
     // If we return [], Time Machine fails. Better to return a random walk for simulation testing.
-    console.warn(`[Data] All providers failed for ${ticker}. Generating synthetic data for simulation.`);
+    // [ENHANCED] Critical warning for synthetic data usage
+    console.error(`🚨 [CRITICAL] All providers failed for ${ticker}. Using SYNTHETIC data - Trading signals UNRELIABLE!`);
+    console.error(`[Data] ⚠️ This data is FAKE and should NOT be used for real trading decisions!`);
+
+    // TODO: Send Telegram alert (requires telegramService import)
+    // telegramService.sendMessage({ title: '⚠️ 데이터 오류', body: `${ticker} 실시간 데이터 조회 실패` });
+
     return generateSyntheticCandles(count);
 }
 
 function generateSyntheticCandles(count: number): OHLCV[] {
+    console.warn(`[Data] 🎲 Generating ${count} SYNTHETIC candles (FAKE DATA)`);
     const data: OHLCV[] = [];
     let price = 50000; // Start at 50k KRW
     const now = new Date();

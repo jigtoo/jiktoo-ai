@@ -391,28 +391,50 @@ class VirtualTradingService {
         // ⚠️ CRITICAL VALIDATION: If price is missing, try to fetch it LAST RESORT
         if (!price || price <= 0 || !isFinite(price)) {
             console.warn(`[VirtualTrading] ⚠️ Invalid price (${price}) detected for ${stockName} (${ticker}). Attempting emergency fetch...`);
-            try {
-                // Try to fetch from KIS Proxy using /rt-snapshot
-                const mk = this.marketTarget; // 'KR' or 'US'
-                const res = await fetch(`${KIS_PROXY_URL}/rt-snapshot?ticker=${ticker}&market=${mk}`);
-                const data = await res.json();
 
-                let fetchedPrice = 0;
-                // /rt-snapshot returns { quote: { stck_prpr: ... } } for both markets
-                if (data.quote && data.quote.stck_prpr) {
-                    fetchedPrice = parseFloat(data.quote.stck_prpr);
-                }
+            // [ENHANCED] Retry emergency fetch up to 3 times
+            let fetchSuccess = false;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    const mk = this.marketTarget; // 'KR' or 'US'
+                    const res = await fetch(`${KIS_PROXY_URL}/rt-snapshot?ticker=${ticker}&market=${mk}`);
 
-                if (fetchedPrice > 0) {
-                    console.log(`[VirtualTrading] ✅ Emergency price recovered: ${fetchedPrice}`);
-                    price = fetchedPrice;
-                } else {
-                    throw new Error("Fetch returned 0 or invalid data");
+                    if (!res.ok) {
+                        console.warn(`[VirtualTrading] Emergency fetch attempt ${attempt}/3 failed: ${res.status}`);
+                        if (attempt < 3) {
+                            await new Promise(r => setTimeout(r, 1000 * attempt)); // Wait before retry
+                            continue;
+                        }
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+
+                    const data = await res.json();
+
+                    let fetchedPrice = 0;
+                    // /rt-snapshot returns { quote: { stck_prpr: ... } } for both markets
+                    if (data.quote && data.quote.stck_prpr) {
+                        fetchedPrice = parseFloat(data.quote.stck_prpr);
+                    }
+
+                    if (fetchedPrice > 0) {
+                        console.log(`[VirtualTrading] ✅ Emergency price recovered on attempt ${attempt}: ${fetchedPrice}`);
+                        price = fetchedPrice;
+                        fetchSuccess = true;
+                        break;
+                    } else {
+                        throw new Error("Fetch returned 0 or invalid data");
+                    }
+                } catch (e) {
+                    console.error(`[VirtualTrading] Emergency fetch attempt ${attempt}/3 error:`, e);
+                    if (attempt === 3) {
+                        console.error(`[VirtualTrading] ❌ All emergency fetch attempts failed for ${ticker}. ABORTING TRADE.`);
+                        return false;
+                    }
+                    await new Promise(r => setTimeout(r, 1000 * attempt));
                 }
-            } catch (e) {
-                console.error(`[VirtualTrading] ❌ Emergency fetch failed for ${ticker}. ABORTING TRADE.`);
-                return false;
             }
+
+            if (!fetchSuccess) return false;
         }
 
         if (!price || price <= 0 || !isFinite(price)) return false; // Double check
