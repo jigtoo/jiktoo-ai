@@ -4,7 +4,7 @@ import type { MarketTarget, StrategyPlaybook, RealtimeSignal, UserWatchlistItem,
 import { supabase } from '../services/supabaseClient';
 import { USE_REALTIME_ALPHA, REALTIME_DEBOUNCE_MS, REALTIME_WINDOW_MS } from '../config';
 import { generatePlaybooksForWatchlist } from '../services/gemini/alphaEngineService';
-import { scannerTools } from '../services/ScannerTools';
+import { scannerHub } from '../services/discovery/ScannerHubService'; // [Architecture 2.0] Discovery Engine
 import { generateAndSave as generateOracleBriefing } from '../services/gemini/marketLogicService';
 // FIX: Add missing import for RealtimePostgresChangesPayload
 // import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
@@ -480,16 +480,18 @@ export const useAlphaLink = (
                 }
             }
 
-            // 2. Active Scanners (Eagle Eye, Volume Spike) - Always Run
-            console.log('[AlphaLink] 🦅 Executing Eagle Eye & Volume Spike Scanners...');
+            // 2. Active Scanners (Eagle Eye, Volume Spike, HOF) - Centralized via Hub
+            console.log('[AlphaLink] 🦅 Executing Discovery Engine Scan (Hub)...');
             try {
-                const [eagleResults, volumeResults] = await Promise.all([
-                    scannerTools.runEagleEyeScanner(marketTarget),
-                    scannerTools.runVolumeSpikeScanner(marketTarget)
-                ]);
+                // [Architecture 2.0] Use Scanner Hub
+                const hubResults = await scannerHub.runFullScan(marketTarget);
 
-                eagleResults.forEach(r => candidates.push({ ticker: r.ticker, stockName: r.stockName, rationale: r.reason }));
-                volumeResults.forEach(r => candidates.push({ ticker: r.ticker, stockName: r.stockName, rationale: r.reason }));
+                hubResults.forEach(r => candidates.push({
+                    ticker: r.ticker,
+                    stockName: r.stockName,
+                    rationale: `[${r.sourceScanner}] ${r.reason}`
+                }));
+
             } catch (scanErr) {
                 console.error('[AlphaLink] Active Scan failed:', scanErr);
             }
@@ -533,12 +535,33 @@ export const useAlphaLink = (
                 return;
             }
 
+            // NEW: Manually map sources from candidates to newPlaybooks
+            // Since generatePlaybooksForWatchlist might not preserve 'sourceScanner' in a structured way (only in text),
+            // we patch it here to ensure UI tags appear.
+            const enhancedPlaybooks = newPlaybooks.map(pb => {
+                const candidate = uniqueCandidates.find(c => c.ticker === pb.ticker);
+                if (candidate) {
+                    // Extract source from rationale if formatted as "[Source] ..."
+                    const match = candidate.rationale.match(/^\[(.*?)\]/);
+                    if (match) {
+                        const sourceTag = match[1];
+                        // If Playbook doesn't have sources or is empty, add this
+                        if (!pb.sources || pb.sources.length === 0) {
+                            pb.sources = [sourceTag];
+                        } else if (!pb.sources.includes(sourceTag)) {
+                            pb.sources.push(sourceTag);
+                        }
+                    }
+                }
+                return pb;
+            });
+
             // Save to DB
-            await savePlaybooksToDB(newPlaybooks);
+            await savePlaybooksToDB(enhancedPlaybooks);
 
             setPlaybooks(prev => {
                 const updatedPlaybooks = [...prev];
-                newPlaybooks.forEach(newBook => {
+                enhancedPlaybooks.forEach(newBook => {
                     const existingIndex = updatedPlaybooks.findIndex(p => p.ticker === newBook.ticker);
                     if (existingIndex > -1) {
                         updatedPlaybooks[existingIndex] = newBook;

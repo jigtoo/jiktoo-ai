@@ -8,7 +8,6 @@ import { supabase } from './supabaseClient';
 import { telegramService } from './telegramService';
 import { autoPilotService } from './AutoPilotService';
 import { MarketTarget } from '../types';
-import { predatorService } from './PredatorService'; // [Predator] Import
 import { evolutionScheduler } from './EvolutionScheduler'; // [Darwin] Import
 
 class AutonomousScheduler {
@@ -68,6 +67,12 @@ class AutonomousScheduler {
         }
         this.isRunning = false;
         console.log('[Scheduler] Stopped');
+    }
+
+    private failedTickers = new Map<string, number>(); // Ticker -> Timestamp
+
+    private constructor() {
+        // Private constructor to enforce Singleton
     }
 
     private async runCycle() {
@@ -147,7 +152,8 @@ class AutonomousScheduler {
             // [Hunter Mode] - Real-time User Strategy Scan (Runs every cycle if market is open)
             if (isMarketOpen) {
                 await this.scanForHunterStrategies(currentMarket);
-
+                // Gap Scan Logic (if needed)
+                await this.scanForHunterStrategies('KR', 'MORNING'); // Treat GAP as Morning for now or add explicit GAP type
                 // [Sniper Mode] - CHECK WATCHLIST for 60m/1m setups
                 const { sniperTriggerService } = await import('./SniperTriggerService');
                 await sniperTriggerService.scanForTriggers(currentMarket);
@@ -266,12 +272,12 @@ class AutonomousScheduler {
                 const slotTitle = type === 'MORNING' ? '오전 핵심 공략' : '오후장 틈새 공략';
                 const results = await scanForConviction(market);
 
-                // [Predator Logic] Analyze for Vulture/FOMO opportunities
+                // Calls scanForHunterStrategies with type
+                await this.scanForHunterStrategies(market, type);
+
                 if (results.length > 0) {
-                    console.log(`[Scheduler] 🦈 Running Predator Analysis on ${results.length} candidates...`);
-                    // Fire and forget (or await if we want to log completion)
-                    await predatorService.scanForPanicSells(results, market);
-                    await predatorService.scanForFOMOClimax(results, market);
+                    console.log(`[Scheduler] 🦈 Conviction Scan found ${results.length} candidates.`);
+                    // [Legacy] Predator Analysis removed in Phase 6
                 }
 
                 if (results.length > 0) {
@@ -508,21 +514,53 @@ ${bflSignals.map(s => `
      * [Hunter Mode] 
      * Scans for User-Defined V2 Strategies against the "Neural Network" (User Watchlists + Playbooks)
      */
-    private async scanForHunterStrategies(market: MarketTarget) {
+    private async scanForHunterStrategies(market: MarketTarget, type: 'GAP' | 'MORNING' | 'AFTERNOON' | 'CLOSING') {
         if (!supabase) return;
 
         try {
             // 1. Fetch Active V2 Strategies
-            const { data: strategies, error } = await supabase
+            const query = supabase
                 .from('strategies')
                 .select('*')
-                // .not('logic_v2', 'is', null) // Ideally filter strictly, but let's fetch all and check in code
                 .eq('is_active', true)
                 .eq('market', market);
 
+            // [Time-Based Filtering] Only fetch strategies valid for this time slot
+            // Assuming strategies have a 'schedule_type' column or we filter in memory
+            // For now, let's filter in memory if column doesn't exist, or rely on naming convention
+
+            const { data: strategies, error } = await query;
+
             if (error || !strategies || strategies.length === 0) return;
 
-            const v2Strategies = strategies.filter((s: any) => s.logic_v2 && s.logic_v2.children);
+            // Strict Schedule Matching
+            const v2Strategies = strategies.filter((s: any) => {
+                const isV2 = s.logic_v2 && s.logic_v2.children;
+                if (!isV2) return false;
+
+                // If schedule_type exists, check it. If not, check name.
+                const schedule = s.schedule_type || 'ANY';
+
+                // [Logic]
+                // 'MORNING' scan -> allows 'MORNING' or 'ANY'
+                // 'AFTERNOON' scan -> allows 'AFTERNOON' or 'ANY'
+                // 'CLOSING' scan -> allows 'CLOSING' or 'ANY'
+
+                if (schedule === 'ANY') return true;
+
+                // Map Scheduler Type to Strategy Schedule
+                // Scheduler: 'MORNING' | 'AFTERNOON' | 'CLOSING'
+                // Strategy: 'MORNING' | 'AFTERNOON' | 'CLOSING'
+                if (type === 'MORNING' && schedule === 'MORNING') return true;
+                if (type === 'AFTERNOON' && schedule === 'AFTERNOON') return true;
+                if (type === 'CLOSING' && (schedule === 'CLOSING' || schedule === 'JONGGA')) return true;
+
+                // Temporary: If strategy name contains '종가' (Closing), only run in CLOSING
+                if (s.name.includes('종가') && type !== 'CLOSING') return false;
+
+                return false;
+            });
+
             if (v2Strategies.length === 0) return;
 
             // 2. Define Scanning Universe (The "Neural Network")
@@ -559,7 +597,7 @@ ${bflSignals.map(s => `
 
             if (playbooks) {
                 playbooks.forEach((p: any) => {
-                    if (p.ticker) targetSet.add(p.ticker);
+                    if (p.ticker && p.ticker !== '없음' && p.ticker !== 'null') targetSet.add(p.ticker);
                 });
             }
 
@@ -583,18 +621,58 @@ ${bflSignals.map(s => `
             const engine = new StrategyEngine();
 
             // 4. Execution Loop (Daily/Weekly Scan -> Stage 1)
+            // 4. Execution Loop (Daily/Weekly Scan -> Stage 1)
+            // [Optimization] Blacklist failed tickers to prevent infinite loops
+            const now = Date.now();
+
             for (const ticker of Array.from(targetSet)) {
-                // Optimize: Skip if data fetch fails repeatedly?
+                // Check Blacklist
+                if (this.failedTickers.has(ticker)) {
+                    const failTime = this.failedTickers.get(ticker) || 0;
+                    if (now - failTime < 60 * 60 * 1000) { // 1 Hour Cooldown
+                        // console.log(`[Hunter] Skipping blacklisted ticker: ${ticker}`); 
+                        continue;
+                    } else {
+                        this.failedTickers.delete(ticker); // Retry after cooldown
+                    }
+                }
+
                 let candles: any[] = [];
                 try {
                     // Fetch enough history for V2 Logic (e.g. 250 days for SEPA/SMA200)
                     candles = await fetchDailyCandles(ticker, market, 250);
                 } catch (err) {
-                    console.warn(`[Hunter] Failed to fetch data for ${ticker}, skipping.`);
+                    console.warn(`[Hunter] Failed to fetch data for ${ticker}, adding to blacklist.`);
+                    this.failedTickers.set(ticker, Date.now());
+                    continue;
+                }
+
+                // If candles empty despite no error (e.g. invalid response)
+                if (!candles || candles.length < 50) {
+                    this.failedTickers.set(ticker, Date.now());
                     continue;
                 }
 
                 if (!candles || candles.length < 50) continue;
+
+                // [DAILY LEADER FILTER] Apply technical analysis criteria
+                // Only proceed with stocks that meet daily leader standards
+                try {
+                    const { analyzeDailyLeaderCriteria } = await import('./technicalAnalysis');
+                    const leaderAnalysis = analyzeDailyLeaderCriteria(candles);
+
+                    // Require minimum score of 75 (3 out of 4 criteria)
+                    // This filters for stocks with: MACD↑, 20MA↑, +5% intraday, significant volume
+                    if (leaderAnalysis.score < 75) {
+                        console.log(`[Hunter] ⏭️  ${ticker} skipped - Daily Leader score: ${leaderAnalysis.score}/100`);
+                        continue;
+                    }
+
+                    console.log(`[Hunter] ✅ ${ticker} passes Daily Leader filter (${leaderAnalysis.score}/100)`);
+                } catch (err) {
+                    console.warn(`[Hunter] Daily Leader analysis failed for ${ticker}:`, err);
+                    // Continue anyway if analysis fails (graceful degradation)
+                }
 
                 // Create Provider with real candles
                 const provider = new RealDataProvider(candles);

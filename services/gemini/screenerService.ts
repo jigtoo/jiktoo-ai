@@ -105,6 +105,33 @@ const alphaEngineSignalSchema = {
     required: ['symbol_id', 'ticker', 'name', 'board', 'cap_bucket', 'scores', 'rationale']
 };
 
+const valuePivotScreenerResultSchema = {
+    type: Type.OBJECT,
+    properties: {
+        stockName: { type: Type.STRING },
+        ticker: { type: Type.STRING },
+        summary: { type: Type.STRING },
+        structuralChangeScore: {
+            type: Type.OBJECT,
+            properties: {
+                capexVsDepreciation: { type: Type.OBJECT, properties: { pass: { type: Type.BOOLEAN }, details: { type: Type.STRING } } },
+                businessMixShift: { type: Type.OBJECT, properties: { pass: { type: Type.BOOLEAN }, details: { type: Type.STRING } } },
+                irPivotMention: { type: Type.OBJECT, properties: { pass: { type: Type.BOOLEAN }, details: { type: Type.STRING } } },
+                total: { type: Type.NUMBER }
+            }
+        },
+        policyAlignmentScore: {
+            type: Type.OBJECT,
+            properties: {
+                pass: { type: Type.BOOLEAN },
+                details: { type: Type.STRING },
+                total: { type: Type.NUMBER }
+            }
+        }
+    },
+    required: ['stockName', 'ticker', 'summary', 'structuralChangeScore', 'policyAlignmentScore']
+};
+
 const genomeSignalSchema = {
     type: Type.ARRAY,
     items: {

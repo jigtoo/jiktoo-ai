@@ -13,10 +13,11 @@ import { deepResearchService } from './DeepResearchService';
 import { telegramIntelligenceService } from './TelegramIntelligenceService';
 import { longTermPortfolioService } from './LongTermPortfolioService';
 import { quantScreenerScheduler } from './schedulers/QuantScreenerScheduler';
+import { executionCommander } from './execution/ExecutionCommander'; // [Architecture 2.0] Execution Engine
 import type { SniperTriggerService } from './SniperTriggerService'; // Type only import
 
 class AutoPilotService {
-    private isRunning: boolean = false;
+    private isRunning: boolean = true; // [Auto-Start] Default to ON for autonomous operation
     private cycleInterval: any = null;
     private marketTarget: MarketTarget = 'KR'; // Default to KR
     private tradingMode: 'AGGRESSIVE' | 'SELECTIVE' = 'SELECTIVE';
@@ -600,32 +601,7 @@ class AutoPilotService {
         }
     }
 
-    /**
-     * Determine optimal strategy based on Trigger Type & Market Regime
-     */
-    private determineStrategy(triggerType: string, regime: string): 'DAY' | 'SWING' | 'LONG' {
-        // 1. Volatility Breakout -> Always DAY (Scalping)
-        if (triggerType === 'VOLATILITY_BREAKOUT') return 'DAY';
 
-        // 2. Volume Spike -> Depends on Regime
-        if (triggerType === 'VOLUME_SPIKE') {
-            // In Bull market, hold for Swing
-            if (regime === 'BULL' || regime === 'STRONG_BULL') return 'SWING';
-            // In Bear market, take quick profits (Day)
-            return 'DAY';
-        }
-
-        // 3. Eagle Eye (Smart Money) -> Usually Swing
-        if (triggerType === 'EAGLE_EYE') return 'SWING';
-
-        // 4. Value Pivot -> Swing or Long
-        if (triggerType === 'VALUE_PIVOT') {
-            if (regime === 'CRASH' || regime === 'BEAR') return 'LONG'; // Deep value
-            return 'SWING';
-        }
-        // Default
-        return 'DAY';
-    }
 
     public async executeSignal(trigger: any) {
         // [Safety] Market Open Check
@@ -665,22 +641,16 @@ class AutoPilotService {
             }
         }
 
-        // Simple execution logic for now, can be expanded
-        const account = virtualTradingService.getAccount();
-        if (account.positions.find(p => p.ticker === trigger.ticker)) return;
-
-        console.log(`[AutoPilot] Executing signal for ${trigger.stockName}`);
-
         // [VALIDATION] Strict Ticker Validation
         let ticker = String(trigger.ticker || '').trim().toUpperCase(); // Normalize
         let stockName = trigger.stockName;
+        const confidence = trigger.score || 0;
 
         // [FEATURE] Index to ETF Mapping (User Request)
         if (ticker === 'KOSPI') {
             console.log(`[AutoPilot] 🔄 Mapping KOSPI Index -> KODEX 200 ETF(069500)`);
             ticker = '069500';
             stockName = 'KODEX 200';
-            // Reset price to force fetch for the ETF, not the Index value
             trigger.currentPrice = 0;
         } else if (ticker === 'KOSDAQ') {
             console.log(`[AutoPilot] 🔄 Mapping KOSDAQ Index -> KODEX KOSDAQ150(229200)`);
@@ -697,230 +667,26 @@ class AutoPilotService {
         // 1. Ensure we are in the correct market mode for this ticker
         await this.checkAndSwitchMarket(ticker);
 
-        // Filter out Date-like tickers (e.g., 20251212)
-        if (/^20\d{6}$/.test(ticker)) {
-            console.warn(`[AutoPilot] 🛑 Signal Blocked: Ticker looks like a date(${ticker})`);
-            return;
-        }
+        // [Architecture 2.0] Execution Delegate
+        console.log(`[AutoPilot] 🎯 Delegating Execution for ${stockName} to Execution Commander...`);
 
-        // KR Market: Must be 6 digits (KOSPI/KOSDAQ)
-        if (this.marketTarget === 'KR') {
-            if (!/^\d{6}$/.test(ticker)) {
-                // Allow some special ETF cases if needed, but standard is 6 digits
-                console.warn(`[AutoPilot] 🛑 Signal Blocked: Invalid KR Ticker Format(${ticker})`);
-                return;
-            }
-        }
+        // Pass the baton to the new Execution Engine
+        await executionCommander.executeOrder({
+            ticker: ticker,
+            stockName: stockName,
+            confidence: confidence, // Pass score
+            currentPrice: trigger.currentPrice,
+            // Add any other details needed by Commander
+        }, this.marketTarget);
 
-        // US Market: Alphanumeric (1-5 chars usually, sometimes dots like BRK.B -> BRK-B)
-        // Relaxing regex to allow common US formats
-        if (this.marketTarget === 'US') {
-            if (!/^[A-Z]{1,6}$/.test(ticker) && !ticker.includes('-')) {
-                // Check logic: 1-6 chars OR contains hyphen (BRK-B)
-                console.warn(`[AutoPilot] 🛑 Signal Blocked: Invalid US Ticker Format(${ticker})`);
-                return;
-            }
-            // Filter out Commodities / Crypto that might be misidentified as tickers
-            const BLOCKED_ASSETS = ['XAG', 'XAU', 'BTC', 'ETH', 'USDT', 'LTC', 'XRP', 'DOGE', 'SOL', 'ADA'];
-            if (BLOCKED_ASSETS.includes(ticker)) {
-                console.log(`[AutoPilot] 🛑 Signal Blocked: Asset not tradable via Stock API(${ticker})`);
-                return;
-            }
-        }
-
-        // [Constitution Article 4] Circuit Breaker Check
-        if (this.circuitBreaker.triggered) {
-            console.warn(`[AutoPilot] 🛑 Signal Blocked: Circuit Breaker Active(${this.circuitBreaker.reason})`);
-            return;
-        }
-
-        /**
-         * ❄️ Winter Survival Tactics (Inverse/Hedge)
-         * If Market is Bearish, we prioritize Inverse ETFs.
-         */
-        if (this.currentMarketRegime.includes('BEAR')) {
-            // Check if this is a Hedge Signal
-            const isHedge = trigger.stockName.includes('인버스') || trigger.stockName.includes('SQQQ') || trigger.stockName.includes('SOXS');
-
-            if (isHedge) {
-                console.log(`[AutoPilot] ❄️ Winter Protocol: Boosting Hedge Signal for ${trigger.stockName}(+30 Confidence)`);
-                trigger.score = (trigger.score || 50) + 30; // Boost Score
-            } else {
-                console.log(`[AutoPilot] ❄️ Winter Protocol: Penalizing Long Signal for ${trigger.stockName}(-20 Confidence)`);
-                trigger.score = (trigger.score || 50) - 20; // Penalize Long
-            }
-        } else if (this.currentMarketRegime === 'SIDEWAYS') {
-            // Box Trading Mode: Boost Rebound Signals
-            // If trigger type is 'SUPPORT_REBOUND' (Support Line Bounce), give bonus
-            if (trigger.type === 'SUPPORT_REBOUND') {
-                console.log(`[AutoPilot] 📦 Box Theory: Boosting Rebound Signal for ${trigger.stockName}(+15 Confidence)`);
-                trigger.score = (trigger.score || 50) + 15;
-            }
-        }
-
-
-        try {
-            const currentExposure = (account.totalAsset - account.cash) / account.totalAsset;
-
-            // [Constitution Article 1: Hunger Logic]
-            // "Hunger = Volatility". If Cash > 90%, we don't lower standards for garbage.
-            // We target "Wild" stocks (High Volatility + High Liquidity).
-
-            let requiredConfidence = 60;
-            let isHungryMode = false;
-
-            if (currentExposure < 0.1) { // Hungry (Cash > 90%)
-                // Hunger Logic v2: The "Wild Beast" Protocol
-                const volatility = trigger.volatility || 0;
-                const rvol = trigger.rvol || 0;
-                const isProfitable = (trigger.operatingIncome || 1) > 0; // Financial Filter (Default safe if unknown)
-
-                // High Volatility (>3%) + High Liquidity (RVOL > 2.0) + Not Junk
-                if (volatility > 3.0 && rvol > 2.0 && isProfitable) {
-                    console.log(`[AutoPilot] 🥣 Hunger Logic Activated: Targeting Volatility!(Vol: ${volatility.toFixed(2)} %, RVOL: ${rvol.toFixed(2)})`);
-                    requiredConfidence = 50; // Entry barrier lowered for High Volatility
-                    isHungryMode = true;
-                }
-            }
-
-            const confidence = trigger.score || 0;
-
-            if (confidence < requiredConfidence) {
-                console.log(`[AutoPilot] ⚠️ Signal REJECTED: ${trigger.stockName} (Confidence: ${confidence}% <${requiredConfidence} %)`);
-                return; // Don't execute low-confidence trades
-            }
-
-            // [CRITICAL FIX] Ensure valid price before trading
-            if (!trigger.currentPrice || trigger.currentPrice <= 0) {
-                console.log(`[AutoPilot] ⚠️ Price missing for ${stockName}(${ticker}).Attempting fetch...`);
-                // Use swapped ticker for fetch
-                const freshData = await _fetchLatestPrice(ticker, stockName, this.marketTarget);
-                if (freshData && freshData.price > 0) {
-                    trigger.currentPrice = freshData.price;
-                    trigger.changeRate = freshData.changeRate; // Update context as well
-                    console.log(`[AutoPilot] ✅ Price repaired: ${trigger.currentPrice} `);
-                } else {
-                    console.error(`[AutoPilot] 🛑 Trade Aborted: Invalid Price(${trigger.currentPrice}) for ${stockName}`);
-                    return;
-                }
-            }
-
-            // AI Strategy Selection
-            const optimalStrategy = this.determineStrategy(trigger.type, this.currentMarketRegime);
-            console.log(`[AutoPilot] 🧠 Strategy Selected: ${optimalStrategy} (Trigger: ${trigger.type}, Regime: ${this.currentMarketRegime})`);
-
-            // [Constitution Article 2: Pyramiding]
-            // Principle: "Never average down. Only Scale Up."
-            // Initial Entry: ALWAYS 5% (Scout) unless it's a "Sure Thing" (Tier 1 Source).
-
-            const totalEquity = account.totalAsset;
-            let targetRatio = 0.05; // Default Stage 1: Scout (5%)
-            let bettingType = 'SCOUT';
-
-            // Exception: If Intelligence Source is Tier 1 (Official), we can start larger?
-            // Constitution says Scout 5%. We stick to 5%.
-
-            if (isHungryMode) {
-                bettingType = 'HUNGER_SCOUT';
-                // Hunger bets are also 5%. We don't bet the farm on wild dogs.
-            }
-
-            // [ADJUSTMENT] Realism Cap (User Feedback)
-            // Limit max bet to 10M KRW / $10k USD per trade to avoid "Explosive" fear in virtual mode
-            const HARD_CAP = this.marketTarget === 'KR' ? 10000000 : 10000;
-            let targetAmount = Math.min(totalEquity * targetRatio, HARD_CAP);
-
-            // [Constitution Addendum] Core-Satellite Budget Check
-            // Ask LongTermService if we have budget for Satellite trades
-            // We approximate current satellite exposure as (TotalAsset - Cash) for now, 
-            // assuming all current positions are Satellite (AutoPilot managed).
-            // In future, we might distinguish Core vs Satellite in position data.
-            const currentSatelliteExposure = account.totalAsset - account.cash;
-            const satelliteBudget = longTermPortfolioService.getSatelliteBudget(totalEquity, currentSatelliteExposure);
-
-            if (satelliteBudget <= 0 && !isHungryMode) {
-                console.warn(`[AutoPilot] 🚫 Satellite Budget Exceeded(Max 30 %).Rejecting new entry for ${stockName}.`);
-                return;
-            } else if (satelliteBudget < targetAmount) {
-                console.log(`[AutoPilot] 📉 Capping Position Size to Remaining Budget: ${targetAmount} -> ${satelliteBudget} `);
-                targetAmount = satelliteBudget;
-            }
-
-            // Convert to Shares
-            let quantity = Math.floor(targetAmount / trigger.currentPrice);
-
-            // 3. Liquidity Constraint: Never buy more than 1% of current volume
-            if (trigger.volume && trigger.volume > 0) {
-                const maxLiquidQty = Math.floor(trigger.volume * 0.01);
-                if (quantity > maxLiquidQty) {
-                    console.log(`[AutoPilot] 🛡️ Liquidity Safety Triggered: Capping ${quantity} -> ${maxLiquidQty} shares(${stockName})`);
-                    quantity = maxLiquidQty;
-                    bettingType += ' (LIQ_SAFE)';
-                }
-            }
-
-            // Minimum 1 share
-            quantity = Math.max(1, quantity);
-
-            // Generate clear, accurate rationale with Strategy Source Prefix
-            let rationale = '';
-            // Determine source label (e.g. "GAP_STRATEGY" -> "갭상승 전략")
-            let sourceLabel = trigger.type || 'SIGNAL';
-            if (sourceLabel === 'GAP_STRATEGY') sourceLabel = '갭상승 스캐너';
-            else if (sourceLabel === 'CONVICTION') sourceLabel = '확신 스캐너';
-            else if (sourceLabel === 'CLOSING_BELL') sourceLabel = '종가배팅 스캐너';
-            else if (sourceLabel === 'VOLATILITY_BREAKOUT') sourceLabel = '변동성 돌파';
-            else if (sourceLabel === 'PLAYBOOK_EXECUTION') sourceLabel = '알파 플레이북';
-
-            if (trigger.details && trigger.details.trim().length > 0) {
-                rationale = `[${sourceLabel}] ${trigger.details} `; // Prefix source
-            } else {
-                rationale = `[${sourceLabel}] AI 신호 포착`;
-            }
-
-            const success = await virtualTradingService.buy(
-                ticker, // Use swapped ticker (ETF)
-                stockName, // Use swapped name (ETF)
-                trigger.currentPrice,
-                quantity,
-                `${rationale} [${bettingType}]`,
-                undefined, // Stop Loss (handled by position monitor)
-                optimalStrategy // Dynamic Strategy
-            );
-
-            if (!success) {
-                console.warn(`[AutoPilot] Failed to execute BUY for ${stockName}(Insufficient funds or error)`);
-                return;
-            }
-
-            // Send Telegram notification with clear rationale
-            // Format numbers nicely to avoid NaN/Infinity display
-            const safeAmount = isFinite(trigger.currentPrice * quantity) ? (trigger.currentPrice * quantity) : 0;
-
-            // [Localization] Validating Stock Name
-            let displayStockName = stockName;
-            if (/^\d{6}$/.test(displayStockName)) {
-                // If name is ticker, try to find real name
-                // Ideally fetch via dataService, but for now, rely on what we have or generic
-                // Or let the Telegram Service handle it? 
-                // Better to handle here.
-            }
-
-            await telegramService.sendTradeReport({
-                action: 'BUY', // [FIX] Passed '매수' but service expects 'BUY'
-                ticker: ticker,
-                stockName: displayStockName,
-                quantity: quantity,
-                price: trigger.currentPrice,
-                amount: safeAmount,
-                reason: `[${optimalStrategy}] ${rationale} | 배팅: ${bettingType} | 확신도: ${confidence}% `,
-                confidence: confidence
-            });
-
-            console.log(`[AutoPilot] ✅ Trade executed and notification sent for ${stockName}`);
-        } catch (error) {
-            console.error(`[AutoPilot] Failed to execute signal for ${trigger.stockName}: `, error);
-        }
+        // Legacy Logging (Optional, kept for now)
+        await this.logThought({
+            ticker: ticker,
+            action: 'EXECUTION',
+            message: `Execution Commander에게 주문 위임: ${stockName}`,
+            confidence: confidence,
+            strategy: 'COMMANDER_DELEGATE'
+        });
     }
 
     private async monitorPositions() {

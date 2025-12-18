@@ -1850,6 +1850,14 @@ export interface SMCSignal {
     stopLoss: number;
     riskRewardRatio: number;
     timestamp: string;
+    // [NEW] Panic Sell Recovery Detection
+    panicSellRecovery?: {
+        hasVolumeClimax: boolean;
+        isRecovering: boolean;
+        volumeRatio: number;        // 평균 대비 거래량 배수
+        recoveryStrength: number;   // 0-100
+        daysFromBottom: number;
+    };
 }
 
 // --- Anchored VWAP Types ---

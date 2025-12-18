@@ -56,14 +56,14 @@ const StoryCard: React.FC<{ item: SuccessStoryItem; onReanalyze: () => void; onV
                 <div className="grid grid-cols-2 gap-2 text-center text-xs">
                     <div className="bg-gray-700/40 p-2 rounded-md">
                         <p className="font-semibold text-gray-400">최고 수익률</p>
-                        <p className={`font-bold text-lg flex items-center justify-center gap-1 ${(item.performanceMetrics.maxGainPercent ?? 0) > 0 ? 'text-green-400' : 'text-gray-200'}`}>
+                        <p className={`font-bold text-lg flex items-center justify-center gap-1 ${maxGain > 0 ? 'text-green-400' : 'text-gray-200'}`}>
                             <TrendingUpIcon className="h-4 w-4" />
-                            {(item.performanceMetrics.maxGainPercent ?? 0).toFixed(1)}%
+                            {maxGain.toFixed(1)}%
                         </p>
                     </div>
                     <div className="bg-gray-700/40 p-2 rounded-md">
                         <p className="font-semibold text-gray-400">고점 대비 하락률</p>
-                        <p className={`font-bold text-lg flex items-center justify-center gap-1 ${(item.performanceMetrics.drawdownFromPeakPercent ?? 0) < 0 ? 'text-red-400' : 'text-gray-200'}`}>
+                        <p className={`font-bold text-lg flex items-center justify-center gap-1 ${drawdown < 0 ? 'text-red-400' : 'text-gray-200'}`}>
                             <TrendingDownIcon className="h-4 w-4" />
                             {(item.performanceMetrics.drawdownFromPeakPercent ?? 0).toFixed(1)}%
                         </p>

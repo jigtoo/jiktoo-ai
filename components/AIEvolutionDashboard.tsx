@@ -15,7 +15,7 @@ import { SystemSignalMonitor } from './SystemSignalMonitor';
 import { KpiDashboard } from './KpiDashboard';
 import { PerformanceStatsDashboard } from './PerformanceStatsDashboard';
 import { ThoughtStream } from './ThoughtStream';
-import { IntelligenceFlowMonitor } from './IntelligenceFlowMonitor';
+import { IntelligenceFlowMonitor, type IntelligenceFlowMonitorRef } from './IntelligenceFlowMonitor';
 import { evolutionScheduler } from '../services/EvolutionScheduler';
 
 const EvolutionControlPanel: React.FC = () => {
@@ -455,6 +455,20 @@ export const AIEvolutionDashboard: React.FC<{
     const [testError, setTestError] = useState<string | null>(null);
     const [testSuccess, setTestSuccess] = useState(false);
 
+    // Ref for IntelligenceFlowMonitor to trigger manual refresh
+    const intelligenceMonitorRef = useRef<IntelligenceFlowMonitorRef>(null);
+
+    // Enhanced refresh handler that refreshes ALL components
+    const handleRefreshAll = async () => {
+        // Refresh timeline data
+        fetchRecent();
+
+        // Refresh intelligence monitor
+        if (intelligenceMonitorRef.current) {
+            await intelligenceMonitorRef.current.refresh();
+        }
+    };
+
     // --- Lazy Load Handlers ---
     const handleJournalToggle = (e: React.SyntheticEvent<HTMLDetailsElement>) => {
         if (e.currentTarget.open && growthJournal.length === 0 && !isJournalLoading) {
@@ -556,7 +570,7 @@ export const AIEvolutionDashboard: React.FC<{
             <DataSourceStatus collectorHealth={collectorHealth} proxyStatus={proxyStatus} />
 
 
-            <IntelligenceFlowMonitor />
+            <IntelligenceFlowMonitor ref={intelligenceMonitorRef} />
 
             <WeeklyDeformationSummary data={weeklyDeformations} isLoading={isDeformationsLoading} error={deformationsError} />
 
@@ -583,7 +597,7 @@ export const AIEvolutionDashboard: React.FC<{
             <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 space-y-3">
                 <CollectorStatusLamp health={collectorHealth} isLoading={isHealthLoading} error={healthError} />
                 <div className="flex items-center gap-2">
-                    <button onClick={fetchRecent} disabled={isLoading} className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50">
+                    <button onClick={handleRefreshAll} disabled={isLoading} className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:opacity-50">
                         <RefreshIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                         데이터 새로고침
                     </button>

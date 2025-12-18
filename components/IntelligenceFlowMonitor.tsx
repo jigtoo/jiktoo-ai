@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { LoadingSpinner } from './LoadingSpinner';
 import { NewsIcon, SendIcon, BrainIcon, LightningIcon, ChevronRightIcon } from './icons';
@@ -21,7 +21,11 @@ interface AIThought {
     details: any;
 }
 
-export const IntelligenceFlowMonitor: React.FC = () => {
+export interface IntelligenceFlowMonitorRef {
+    refresh: () => Promise<void>;
+}
+
+export const IntelligenceFlowMonitor = forwardRef<IntelligenceFlowMonitorRef>((props, ref) => {
     const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
     const [aiThoughts, setAIThoughts] = useState<AIThought[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -94,6 +98,13 @@ export const IntelligenceFlowMonitor: React.FC = () => {
             setIsLoading(false);
         }
     };
+
+    // Expose refresh method to parent
+    useImperativeHandle(ref, () => ({
+        refresh: async () => {
+            await fetchData();
+        }
+    }));
 
     useEffect(() => {
         fetchData();
@@ -265,4 +276,6 @@ export const IntelligenceFlowMonitor: React.FC = () => {
             </div>
         </div>
     );
-};
+});
+
+IntelligenceFlowMonitor.displayName = 'IntelligenceFlowMonitor';

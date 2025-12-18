@@ -37,6 +37,12 @@ export async function fetchLatestPrice(ticker: string, stockName: string, market
 
     // ... validation logic ...
 
+    // [Validation] Block invalid tickers immediately
+    if (!ticker || ticker === '없음' || ticker === 'null' || ticker === 'undefined' || ticker.length < 2) {
+        // console.warn(`[Data] Blocked invalid ticker request: ${ticker}`); // Reduce noise
+        return { price: 0, changeRate: 0, volume: 0, timestamp: 'Invalid' };
+    }
+
     try {
         if (IS_KIS_PROXY_ENABLED) return await _fetchPriceViaKisProxy(ticker, marketTarget);
     } catch (error) {
@@ -66,6 +72,12 @@ export async function fetchDailyCandles(ticker: string, marketTarget: MarketTarg
  * Uses API Gateway (Polygon) or KIS Proxy fallback
  */
 export async function fetchCandles(ticker: string, timeframe: 'day' | '60' | '1', count: number = 20): Promise<OHLCV[]> {
+    // [Validation] Block invalid tickers immediately
+    if (!ticker || ticker === '없음' || ticker === 'null' || ticker === 'NA' || ticker === 'undefined' || ticker.length < 2) {
+        // console.warn(`[Data] Blocked invalid ticker request: ${ticker}`);
+        return [];
+    }
+
     const timeframeMap: any = { 'day': '1/day', '60': '60/minute', '1': '1/minute' };
     const polygonTimeframe = timeframeMap[timeframe];
 
@@ -107,7 +119,12 @@ export async function fetchCandles(ticker: string, timeframe: 'day' | '60' | '1'
     // Route if: Day timeframe OR .KS/.KQ suffix OR 6-digit numeric ticker (KR)
     if (timeframe === 'day' || ticker.endsWith('.KS') || ticker.endsWith('.KQ') || /^\d{6}$/.test(ticker)) {
         try {
-            const stockCode = ticker.replace(/\.(KS|KQ)$/i, '');
+            // [Sanitization] Ensure strict 6-digit code for KIS Proxy
+            // Remove any spaces, dots, or letters (like ' KS')
+            const stockCode = ticker.replace(/[^0-9]/g, '');
+
+            if (stockCode.length !== 6) throw new Error('Invalid KIS Ticker Format');
+
             const response = await fetch(`${KIS_PROXY_URL}/daily-price?ticker=${stockCode}&market=KR&period=${count}`);
             if (response.ok) {
                 const data = await response.json();

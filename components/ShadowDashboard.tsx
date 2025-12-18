@@ -20,7 +20,7 @@ interface ShadowDashboardProps {
 
 export const ShadowDashboard: React.FC<ShadowDashboardProps> = ({ marketTarget = 'KR' }) => {
     // const [account, setAccount] = useState<VirtualAccount | null>(null); // Replaced by hook
-    const [isAutoPilotOn, setIsAutoPilotOn] = useState(false); // Restored for toggle state
+    const [isAutoPilotOn, setIsAutoPilotOn] = useState(true); // [Auto-Start] Default to ON
     const [regimeStatus, setRegimeStatus] = useState<MarketRegimeStatus | null>(null);
     const [recentLessons, setRecentLessons] = useState<{ date: string; lesson: string; score: number }[]>([]);
     const isMock = isMockDataEnabled();
@@ -77,7 +77,8 @@ export const ShadowDashboard: React.FC<ShadowDashboardProps> = ({ marketTarget =
         totalAsset: totalValue || saneInitial,
         positions: allPositions.map(h => ({
             ticker: h.ticker,
-            stockName: h.stockName,
+            ticker: h.ticker,
+            stockName: (h.stockName && h.stockName !== h.ticker) ? h.stockName : enhanceStockName(h.ticker),
             avgPrice: h.entryPrice,
             quantity: h.quantity,
             currentPrice: h.entryPrice, // Hook gives entry, need current? Hook actually gives Realtime usually if updated.

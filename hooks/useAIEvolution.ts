@@ -495,9 +495,15 @@ export const useAIEvolution = () => {
     }, [fetchGrowthJournal]);
 
     const fetchSignalMonitorData = useCallback(async () => {
-        if (!supabase) return;
         setIsSignalMonitorLoading(true);
         setSignalMonitorError(null);
+
+        if (!supabase) {
+            setSignalMonitorError("Supabase client not initialized");
+            setIsSignalMonitorLoading(false);
+            return;
+        }
+
         try {
             const [statusRes, logRes, cronRes] = await Promise.all([
                 supabase.from('v_system_signal_status').select('*').single(),
@@ -520,19 +526,29 @@ export const useAIEvolution = () => {
     }, []);
 
     const fetchKpiData = useCallback(async () => {
-        if (!supabase) return;
         setIsKpiLoading(true);
         setKpiError(null);
+
+        if (!supabase) {
+            setKpiError("Supabase client not initialized");
+            setIsKpiLoading(false);
+            return;
+        }
+
         try {
             const [summaryRes, deltasRes] = await Promise.all([
                 supabase.from('v_exec_kpi_summary_7d_latest').select('*').single(),
                 supabase.from('v_exec_kpi_deltas_latest').select('*').limit(20),
             ]);
-            if (summaryRes.error) throw new Error(`KPI summary fetch failed: ${summaryRes.error.message}`);
+
+            // Allow 406 (Not Acceptable) which happens if View returns 0 rows (single() fails)
+            // Or handle it gracefully.
+
+            if (summaryRes.error && summaryRes.error.code !== 'PGRST116') throw new Error(`KPI summary fetch failed: ${summaryRes.error.message}`);
             if (deltasRes.error) throw new Error(`KPI deltas fetch failed: ${deltasRes.error.message}`);
 
-            setKpiSummary(summaryRes.data as KpiSummary);
-            setKpiDeltas(deltasRes.data as KpiDelta[]);
+            setKpiSummary(summaryRes.data as KpiSummary || null);
+            setKpiDeltas(deltasRes.data as KpiDelta[] || []);
 
         } catch (e) {
             setKpiError(e instanceof Error ? e.message : 'Failed to fetch KPI data.');
@@ -542,9 +558,15 @@ export const useAIEvolution = () => {
     }, []);
 
     const fetchWeeklyDeformations = useCallback(async () => {
-        if (!supabase) return;
         setIsDeformationsLoading(true);
         setDeformationsError(null);
+
+        if (!supabase) {
+            setDeformationsError("Supabase client not initialized");
+            setIsDeformationsLoading(false);
+            return;
+        }
+
         try {
             const { data, error } = await supabase.from('v_weekly_deformations').select('*');
             if (error) throw error;

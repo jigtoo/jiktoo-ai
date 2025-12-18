@@ -73,13 +73,47 @@ export const useSMCScanner = (marketTarget: MarketTarget): UseSMCScanner => {
 
             // Gemini로 SMC 신호 스캔
             const scannedSignals = await scanForSMCSignals(marketTarget, watchlist);
-            setSignals(scannedSignals);
+
+            // [NEW] Enrich with Panic Sell Recovery Analysis
+            const { analyzePanicSellRecovery } = await import('../services/volumeAnalysis');
+
+            const enrichedSignals = await Promise.all(
+                scannedSignals.map(async (signal) => {
+                    try {
+                        const panicAnalysis = await analyzePanicSellRecovery(signal.ticker, marketTarget);
+
+                        // Add panic sell recovery data if detected
+                        if (panicAnalysis.volumeClimax.isClimax || panicAnalysis.capitulationRecovery.isRecovering) {
+                            return {
+                                ...signal,
+                                panicSellRecovery: {
+                                    hasVolumeClimax: panicAnalysis.volumeClimax.isClimax,
+                                    isRecovering: panicAnalysis.capitulationRecovery.isRecovering,
+                                    volumeRatio: panicAnalysis.volumeClimax.volumeRatio,
+                                    recoveryStrength: panicAnalysis.capitulationRecovery.strength,
+                                    daysFromBottom: panicAnalysis.capitulationRecovery.daysFromBottom
+                                },
+                                // Boost confidence if both SMC and Panic Recovery detected
+                                confidence: panicAnalysis.capitulationRecovery.isRecovering
+                                    ? Math.min(100, signal.confidence + 20)
+                                    : signal.confidence
+                            };
+                        }
+                        return signal;
+                    } catch (err) {
+                        console.warn(`[SMC Scanner] Volume analysis failed for ${signal.ticker}:`, err);
+                        return signal; // Return original signal if analysis fails
+                    }
+                })
+            );
+
+            setSignals(enrichedSignals);
 
             // Supabase에 저장
-            if (scannedSignals.length > 0 && supabase) {
+            if (enrichedSignals.length > 0 && supabase) {
                 const today = new Date().toISOString().split('T')[0];
 
-                const rows = scannedSignals.map(signal => ({
+                const rows = enrichedSignals.map(signal => ({
                     date: today,
                     market: signal.market,
                     ticker: signal.ticker,
@@ -94,7 +128,9 @@ export const useSMCScanner = (marketTarget: MarketTarget): UseSMCScanner => {
                     stop_loss: signal.stopLoss,
                     risk_reward_ratio: signal.riskRewardRatio,
                     signal_timestamp: signal.timestamp,
-                    is_active: true
+                    is_active: true,
+                    // [NEW] Store panic sell recovery data
+                    panic_sell_recovery: signal.panicSellRecovery || null
                 }));
 
                 const { error: insertError } = await supabase
@@ -104,11 +140,11 @@ export const useSMCScanner = (marketTarget: MarketTarget): UseSMCScanner => {
                 if (insertError) {
                     console.error('[SMC Scanner] Supabase 저장 실패:', insertError);
                 } else {
-                    console.log(`[SMC Scanner] ✅ ${scannedSignals.length}개 신호 저장 완료`);
+                    console.log(`[SMC Scanner] ✅ ${enrichedSignals.length}개 신호 저장 완료`);
                 }
             }
 
-            console.log(`[SMC Scanner] ✅ 스캔 완료: ${scannedSignals.length}개 신호 발견`);
+            console.log(`[SMC Scanner] ✅ 스캔 완료: ${enrichedSignals.length}개 신호 발견`);
 
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'SMC 스캔 중 오류 발생';

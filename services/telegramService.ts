@@ -123,6 +123,12 @@ class TelegramService {
         const emoji = data.type === 'VOLUME_SPIKE' ? '📢' : '🚀';
         const typeLabel = data.type === 'VOLUME_SPIKE' ? '거래량 급증' : '변동성 돌파';
 
+        // [Enhancement] Resolve Name if missing or numeric
+        if (!data.stockName || /^\d+$/.test(data.stockName)) {
+            const { enhanceStockName } = await import('../utils/stockDisplay');
+            data.stockName = enhanceStockName(data.ticker);
+        }
+
         const message: TelegramMessage = {
             title: `Sniper Trigger: ${this.escapeMarkdown(data.stockName)}`,
             body: `*분류*: ${typeLabel}\n*종목*: ${this.escapeMarkdown(data.stockName)} (${this.escapeMarkdown(data.ticker)})\n*현재가*: ${data.currentPrice.toLocaleString()}원\n*등락률*: ${data.changeRate > 0 ? '+' : ''}${data.changeRate.toFixed(2)}%\n*거래량*: ${data.volume.toLocaleString()}주\n*스코어*: ${data.score}/100\n\n_${this.escapeMarkdown(data.details)}_`,
@@ -167,6 +173,12 @@ class TelegramService {
     }): Promise<boolean> {
         const emoji = data.action === 'BUY' ? '🔵' : '🔴';
         const actionLabel = data.action === 'BUY' ? '매수' : '매도';
+
+        // [Enhancement] Resolve Name if missing or numeric
+        if (!data.stockName || /^\d+$/.test(data.stockName)) {
+            const { enhanceStockName } = await import('../utils/stockDisplay');
+            data.stockName = enhanceStockName(data.ticker);
+        }
 
         const message: TelegramMessage = {
             title: `Shadow Trader ${actionLabel}: ${this.escapeMarkdown(data.stockName)}`,
