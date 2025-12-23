@@ -137,35 +137,41 @@ export const useAIQuantScreener = (marketTarget: MarketTarget) => {
         const universe = await getUniverseForMarket(market);
         console.log(`[Data Injection] Fetching real data for ${universe.length} items in ${market}...`);
 
-        const candidates = await Promise.all(universe.map(async (item) => {
-            try {
-                const candles = await fetchDailyCandles(item.ticker, market, 20);
-                if (!candles || candles.length === 0) return null;
-                const lastCandle = candles[candles.length - 1];
-                return {
-                    ticker: item.ticker,
-                    stockName: item.name,
-                    currentPrice: lastCandle.close,
-                    marketCap: 0,
-                    // [Fix] Use Static Market Type if available (Zero Token Cost)
-                    market: (item as any).marketType || (market === 'US' ? 'NASDAQ' : undefined),
-                    recentCandles: candles.map(c => ({
-                        date: c.date,
-                        close: c.close,
-                        volume: c.volume
-                    }))
-                };
-            } catch (e) {
-                console.warn(`[Data Injection] Failed to fetch data for ${item.ticker}:`, e);
-                return null;
-            }
-        }));
+        const validCandidates: any[] = [];
+        const BATCH_SIZE = 5; // Prevent Rate Limits (429/500)
 
-        const validCandidates = candidates.filter(c => c !== null);
+        for (let i = 0; i < universe.length; i += BATCH_SIZE) {
+            const batch = universe.slice(i, i + BATCH_SIZE);
+            console.log(`[Data Injection] Processing batch ${i / BATCH_SIZE + 1}/${Math.ceil(universe.length / BATCH_SIZE)}...`);
 
-        // [Removed] Dangerous Client-Side AI Classification to prevent infinite loading / token waste.
-        // Now relying on High-Confidence Static Data in EXPANDED_UNIVERSE.
+            const batchResults = await Promise.all(batch.map(async (item) => {
+                try {
+                    const candles = await fetchDailyCandles(item.ticker, market, 20);
+                    if (!candles || candles.length === 0) return null;
+                    const lastCandle = candles[candles.length - 1];
+                    return {
+                        ticker: item.ticker,
+                        stockName: item.name,
+                        currentPrice: lastCandle.close,
+                        marketCap: 0,
+                        market: (item as any).marketType || (market === 'US' ? 'NASDAQ' : undefined),
+                        recentCandles: candles.map(c => ({
+                            date: c.date,
+                            close: c.close,
+                            volume: c.volume
+                        }))
+                    };
+                } catch (e) {
+                    console.warn(`[Data Injection] Failed to fetch data for ${item.ticker}:`, e);
+                    return null;
+                }
+            }));
 
+            validCandidates.push(...batchResults.filter(c => c !== null));
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1s delay between batches
+        }
+
+        // Batching complete. validCandidates is populated.
         console.log(`[Data Injection] Successfully prepared ${validCandidates.length} data-verified candidates.`);
         return validCandidates;
     };

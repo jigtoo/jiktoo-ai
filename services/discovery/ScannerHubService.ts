@@ -286,17 +286,33 @@ class ScannerHubService {
 
             console.log(`[ScannerHub] Selected ${targets.length} candidates (Hot: ${hotStocks.length}, Random: ${targets.length - Math.min(hotStocks.length, limit)})`);
 
-            // 3. Fetch Candles
-            const candidates = await Promise.all(targets.map(async (t) => {
-                const candles = await fetchDailyCandles(t.ticker, market); // 20 days default
-                if (!candles || candles.length < 10) return null;
-                return {
-                    ticker: t.ticker,
-                    stockName: t.stock_name,
-                    currentPrice: candles[candles.length - 1].close,
-                    recentCandles: candles
-                } as ScannerCandidate;
-            }));
+            // 3. Fetch Candles with Batching (Prevent 429/500)
+            const candidates: ScannerCandidate[] = [];
+            const BATCH_SIZE = 5;
+
+            for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+                const batch = targets.slice(i, i + BATCH_SIZE);
+                // console.log(`[ScannerHub] Processing batch ${i/5 + 1}...`);
+
+                const batchResults = await Promise.all(batch.map(async (t) => {
+                    try {
+                        const candles = await fetchDailyCandles(t.ticker, market); // 20 days default
+                        if (!candles || candles.length < 10) return null;
+                        return {
+                            ticker: t.ticker,
+                            stockName: t.stock_name,
+                            currentPrice: candles[candles.length - 1].close,
+                            recentCandles: candles
+                        } as ScannerCandidate;
+                    } catch (e) {
+                        console.warn(`[ScannerHub] Data fetch failed for ${t.ticker}:`, e);
+                        return null;
+                    }
+                }));
+
+                candidates.push(...(batchResults.filter(c => c !== null) as ScannerCandidate[]));
+                await this.delay(500);
+            }
 
             return candidates.filter(c => c !== null) as ScannerCandidate[];
         } catch (e) {
