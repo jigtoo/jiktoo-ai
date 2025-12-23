@@ -1,4 +1,3 @@
-// components/AIQuantScreener.tsx
 
 import React, { useState } from 'react';
 import type { DashboardStock, MarketTarget } from '../types';
@@ -6,8 +5,6 @@ import { StockCard } from './StockCard';
 import { LoadingSpinner } from './LoadingSpinner';
 import { InfoIcon, MagnifyingGlassIcon as ScreenerIcon, RefreshIcon, AIEvolutionIcon } from './icons';
 import { ErrorDisplay } from './ErrorDisplay';
-import { runValuePivotScan, runPowerPlayScan, runTurnaroundScan } from '../services/ScannerTools';
-import { scanForGenomeMomentum } from '../services/gemini/screenerService';
 
 const Tooltip: React.FC<{ text: string }> = ({ text }) => {
     return (
@@ -82,12 +79,11 @@ interface AIQuantScreenerProps {
     results: any[];
     isLoading: boolean;
     error: string | null;
-    handleScan: (type: 'value' | 'power' | 'turnaround' | 'genome' | 'all') => void;
+    handleScan: (type: 'value' | 'power' | 'turnaround' | 'genome' | 'hof' | 'all') => void;
     activeRecipe: string | null;
 }
 
 export const AIQuantScreener: React.FC<AIQuantScreenerProps> = ({
-    marketTarget,
     results,
     isLoading,
     error,
@@ -111,7 +107,7 @@ export const AIQuantScreener: React.FC<AIQuantScreenerProps> = ({
                 {isLoading && <LoadingSpinner />}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
                 <RecipeButton
                     title="🧬 게놈 헌터 (Evolved)"
                     description="타임머신에서 검증된 활성 전략으로 종목 발굴"
@@ -120,30 +116,36 @@ export const AIQuantScreener: React.FC<AIQuantScreenerProps> = ({
                     icon={<AIEvolutionIcon className="w-4 h-4 text-purple-400" />}
                 />
                 <RecipeButton
-                    title="💎 슈퍼 밸류 + 피벗"
-                    description="저평가 우량주가 지지선에서 반등하는 시점을 포착"
+                    title="💎 슈퍼 밸류 + 피벗 (Wide)"
+                    description="저평가 우량주 및 중소형주의 반등 시점 포착"
                     active={activeRecipe === 'value'}
                     onClick={() => handleScan('value')}
                 />
                 <RecipeButton
-                    title="🚀 파워 플레이"
-                    description="강력한 모멘텀 발생 후 기간 조정 중인 종목"
+                    title="🚀 파워 플레이 (Wide)"
+                    description="강력한 모멘텀(20%+) 및 숨은 강자 발굴"
                     active={activeRecipe === 'power'}
                     onClick={() => handleScan('power')}
                 />
                 <RecipeButton
-                    title="🔄 턴어라운드"
-                    description="바닥권에서 대량 거래와 함께 추세 전환 시도"
+                    title="🔄 턴어라운드 + 매집"
+                    description="바닥권 대량 거래(폭풍 전야) 및 추세 전환"
                     active={activeRecipe === 'turnaround'}
                     onClick={() => handleScan('turnaround')}
+                />
+                <RecipeButton
+                    title="🏆 명예의 전당 (Precision)"
+                    description="미너비니, 래리 윌리엄스 + AI Insight (정밀 타격)"
+                    active={activeRecipe === 'hof'}
+                    onClick={() => handleScan('hof')}
                 />
                 <button
                     onClick={() => handleScan('all')}
                     disabled={isLoading}
-                    className={`col-span-1 md:col-span-2 lg:col-span-4 p-3 rounded-xl border border-dashed border-indigo-500/50 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 transition-all font-bold flex items-center justify-center gap-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`col-span-1 md:col-span-2 lg:col-span-5 p-3 rounded-xl border border-dashed border-indigo-500/50 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 transition-all font-bold flex items-center justify-center gap-2 ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                     <RefreshIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                    {isLoading && activeRecipe === 'all' ? '전체 스캔 진행 중...' : '원클릭: 모든 전략 순차 실행'}
+                    {isLoading && activeRecipe === 'all' ? '전체 스캔 진행 중...' : '원클릭: 모든 전략 순차 실행 (명예의 전당 포함)'}
                 </button>
             </div>
 

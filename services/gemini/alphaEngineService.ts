@@ -1,4 +1,4 @@
-// services/gemini/alphaEngineService.ts
+ï»¿// services/gemini/alphaEngineService.ts
 import { Type } from "@google/genai";
 import type { StrategyPlaybook, MarketTarget, Signal, InvestmentPersona, WatchlistHistoryItem, UserWatchlistItem, DayTraderSignal, DashboardStock, NeutralSignal, ActiveSignal, UserStrategy, MarketRegimeAnalysis, RealtimeSignal } from '../../types';
 import { ai, AI_DISABLED_ERROR_MESSAGE, generateContentWithRetry } from './client';
@@ -20,7 +20,7 @@ export async function processWatchlistItemForPlaybook(
     item: UserWatchlistItem,
     marketTarget: MarketTarget,
 ): Promise<StrategyPlaybook | null> {
-    // 1. DB ?°ì„  ì¡°íšŒ
+    // 1. DB ?ê³—ê½‘ è­°ê³ ì‰¶
     const dbData = await fetchAlphaPreviewLatest(item.ticker);
 
     if (!dbData) {
@@ -28,13 +28,13 @@ export async function processWatchlistItemForPlaybook(
         return null;
     }
 
-    // 2. ê¸°ë³¸ ì¹´ë“œ êµ¬ì„± (DB only)
+    // 2. æ¹²ê³•ë‚¯ ç§»ëŒ€ë±¶ æ´ÑŠê½¦ (DB only)
     let basePlaybookItem: StrategyPlaybook = {
         id: `${item.ticker}-DBSignal`,
         stockName: dbData.stockName || item.stockName,
         ticker: item.ticker,
         strategyName: 'DB Signal',
-        strategySummary: dbData.rationale || '(?°ì´?°ë² ?´ìŠ¤?ì„œ ?œê³µ???”ì•½)',
+        strategySummary: dbData.rationale || '(?ê³—ì” ?ê³•ì¿‹?ëŒë’ª?ë¨¯ê½Œ ?ì’“ë‚¬???ë¶¿ë¹Ÿ)',
         aiConfidence: dbData.aiScore || 50,
         keyLevels: {
             entry: dbData.pivotPoint || 'N/A',
@@ -48,7 +48,7 @@ export async function processWatchlistItemForPlaybook(
         source: 'db',
     };
 
-    // 3. ?…ë ¥?”ì•½ ?´ì‹œ ë°?Gemini ?¸ì¶œ ì¡°ê±´ ?•ì¸
+    // 3. ?ë‚…ì °?ë¶¿ë¹Ÿ ?ëŒë–† è«›?Gemini ?ëª„í…§ è­°ê³Œêµ” ?ëº¤ì”¤
     const compact = { t: dbData.ticker, m: dbData.market, r: dbData.rationale, p: dbData.pivotPoint, at: dbData.updated_at };
     const inputHash = await sha256(JSON.stringify(compact));
     const stateKey = `playbook:${marketTarget}:${item.ticker}`;
@@ -68,7 +68,7 @@ export async function processWatchlistItemForPlaybook(
                 }
             });
 
-            // 4. Gemini ?°ì´?°ë¡œ ë³´ê°•
+            // 4. Gemini ?ê³—ì” ?ê³•ì¤ˆ è¹‚ë‹¿ì»¯
             basePlaybookItem = {
                 ...basePlaybookItem,
                 strategyName: 'Hybrid Signal',
@@ -93,7 +93,7 @@ export async function processWatchlistItemForPlaybook(
             return basePlaybookItem;
         }
     } else {
-        // 5. Gemini ?¸ì¶œ ë¶ˆí•„????ìºì‹œ ?•ì¸
+        // 5. Gemini ?ëª„í…§ éºëŠë¸˜????ï§¦ë¨¯ë–† ?ëº¤ì”¤
         const cachedData = localStorage.getItem(cacheKey);
         if (cachedData) {
             try {
@@ -147,7 +147,7 @@ export async function generatePlaybooksFromCandidates(
             id: { type: Type.STRING },
             stockName: { type: Type.STRING },
             ticker: { type: Type.STRING },
-            strategyName: { type: Type.STRING, enum: ['VCP (ë³€?™ì„± ì¶•ì†Œ ?¨í„´)', 'Cup and Handle (ÄÅ¾ØÇÚµé)', 'ÇÃ·§ º£ÀÌ½º(Flat Base)', '»ó½Â »ï°¢Çü(Ascending Triangle)', 'AI ë§¤ì§‘ë´??¬ì°© (ê¸°ê?/?¸êµ­???ëŒ??', 'AI ?í•œê°€ ?¬ì°© ?”ì§„ (?œì¥ ì£¼ë„ì£?', 'DB Signal', 'Hybrid Signal', '±âÅ¸'] },
+            strategyName: { type: Type.STRING, enum: ['VCP (è¹‚Â€?ìˆˆê½¦ ç•°ëº¤ëƒ¼ ?â‘¦ê½©)', 'Cup and Handle (ì»µì•¤í•¸ë“¤)', 'í”Œë« ë² ì´ìŠ¤(Flat Base)', 'ìƒìŠ¹ ì‚¼ê°í˜•(Ascending Triangle)', 'AI ï§ã…¼ì­›éŠ??ÑŠê°‘ (æ¹²ê³Œ?/?ë©¸ë…???ë¾ê±£??', 'AI ?ê³¹ë¸³åª›Â€ ?ÑŠê°‘ ?ë¶¿ì­Š (?ì’–ì˜£ äºŒì‡°ë£„äºŒ?', 'DB Signal', 'Hybrid Signal', 'ê¸°íƒ€'] },
             strategySummary: { type: Type.STRING },
             aiConfidence: { type: Type.NUMBER },
             keyLevels: { type: Type.OBJECT, properties: { entry: { type: Type.STRING }, stopLoss: { type: Type.STRING }, target: { type: Type.STRING } }, required: ['entry', 'stopLoss', 'target'] },
@@ -160,7 +160,7 @@ export async function generatePlaybooksFromCandidates(
         type: Type.OBJECT,
         properties: {
             playbooks: { type: Type.ARRAY, items: playbookSchema },
-            summary: { type: Type.STRING, description: "AI??ê²°ì • ê³¼ì •ê³?ìµœì¢… ? íƒ???€??ÇÑ±¹¾î?”ì•½." }
+            summary: { type: Type.STRING, description: "AI??å¯ƒê³—ì ™ æ€¨ì‡±ì ™æ€¨?ï§¤ì’–ì¥Œ ?ì¢ê¹®???Â€??í•œêµ­ì–´?ë¶¿ë¹Ÿ." }
         },
         required: ['playbooks', 'summary']
     };
@@ -182,8 +182,8 @@ No user-defined strategies are active. You MUST inform the user in your 'summary
         ? `
 **Market Regime:** ${marketRegime.regime} - ${marketRegime.summary}
 **Market Adaptability Rule:** The current market regime is '${marketRegime.regime}'. You MUST adapt your selection criteria based on this.
-- In a '?˜ë½?? or 'ê³ ë??™ì„± ?¼ë???, you MUST **give highest priority to the 'AI ë§¤ì§‘ë´??¬ì°© (ê¸°ê?/?¸êµ­???ëŒ??' strategy if it is active**. Look for stocks that are resilient (rising on a down day) or being heavily accumulated by institutions/foreigners. Be extremely selective. It is acceptable to find zero signals if conviction is low.
-- In a '?€ë³€?™ì„± ì¶”ì„¸??, you can be more flexible. A stock matching 80% of a classic breakout strategy's criteria might be a valid candidate.`
+- In a '?ì„ì”«?? or 'æ€¨ì¢Š??ìˆˆê½¦ ?ì‡°???, you MUST **give highest priority to the 'AI ï§ã…¼ì­›éŠ??ÑŠê°‘ (æ¹²ê³Œ?/?ë©¸ë…???ë¾ê±£??' strategy if it is active**. Look for stocks that are resilient (rising on a down day) or being heavily accumulated by institutions/foreigners. Be extremely selective. It is acceptable to find zero signals if conviction is low.
+- In a '?Â€è¹‚Â€?ìˆˆê½¦ ç•°ë¶¿ê½­??, you can be more flexible. A stock matching 80% of a classic breakout strategy's criteria might be a valid candidate.`
         : `**Market Regime:** Unknown. Proceed with standard analysis.`;
 
     // Get current time in target market's timezone
@@ -211,10 +211,10 @@ You are the JIKTOO Alpha Engine, a sophisticated AI that scans a stock watchlist
 - **Use Real-time Data:** You MUST use the provided 'currentPrice' as the basis for your technical analysis to ensure accuracy.
 - **Scan & Match:** For each stock in 'Your Watchlist', evaluate it against **ALL strategies listed in 'Your Active Strategies'**, paying close attention to the **Market Adaptability Rule**. If no strategies are active, state this clearly.
 - **TIME SENSITIVITY RULE (CRITICAL):**
-    - **Closing Bell (Á¾°¡ ¹èÆÃ):** ONLY suggest this if the Current Market Time is within 1 hour of market close (KR: 14:30-15:30, US: 15:00-16:00). If it is earlier, suggest 'SwingTrade' or 'DayTrade' instead.
+    - **Closing Bell (ì¢…ê°€ ë°°íŒ…):** ONLY suggest this if the Current Market Time is within 1 hour of market close (KR: 14:30-15:30, US: 15:00-16:00). If it is earlier, suggest 'SwingTrade' or 'DayTrade' instead.
 - **VALIDATION:** For any potential matches, use Google Search to get the latest volume and news to confirm the setup is valid *today*.
 - **Select Top 1-3 Matches:** Based on your scan, select only the 1 to 3 stocks that provide the **strongest match** to any of the available strategies.
-- **OUTPUT:** Present all your findings and analysis as a comprehensive, unstructured text report in **KOREAN (ÇÑ±¹¾î**. For each stock you select, clearly state **which strategy it matched** and **why**.
+- **OUTPUT:** Present all your findings and analysis as a comprehensive, unstructured text report in **KOREAN (í•œêµ­ì–´**. For each stock you select, clearly state **which strategy it matched** and **why**.
 `;
 
     const gatheringResponse = await generateContentWithRetry({
@@ -245,12 +245,12 @@ Based ONLY on the provided CONTEXT, generate a structured JSON object containing
 
 **Instructions:**
 - For each stock you selected in the CONTEXT, create a detailed \`StrategyPlaybook\` object.
-- **strategyName**: This MUST be the name of the strategy you identified as a match in the CONTEXT. The available strategy names are: ['VCP (º¯µ¿¼º Ãà¼Ò ÆĞÅÏ)', 'Cup and Handle (ÄÅ¾ØÇÚµé)', 'ÇÃ·§ º£ÀÌ½º(Flat Base)', '»ó½Â »ï°¢Çü(Ascending Triangle)', 'AI ¸ÅÁıºÀ Æ÷Âø (±â°ü/¿Ü±¹ÀÎ ¼ö±Ş)', 'AI »óÇÑ°¡ Æ÷Âø µ¹Áø (½ÃÀå ÁÖµµÁÖ)', 'DB Signal', 'Hybrid Signal', '±âÅ¸'].
+- **strategyName**: This MUST be the name of the strategy you identified as a match in the CONTEXT. The available strategy names are: ['VCP (ë³€ë™ì„± ì¶•ì†Œ íŒ¨í„´)', 'Cup and Handle (ì»µì•¤í•¸ë“¤)', 'í”Œë« ë² ì´ìŠ¤(Flat Base)', 'ìƒìŠ¹ ì‚¼ê°í˜•(Ascending Triangle)', 'AI ë§¤ì§‘ë´‰ í¬ì°© (ê¸°ê´€/ì™¸êµ­ì¸ ìˆ˜ê¸‰)', 'AI ìƒí•œê°€ í¬ì°© ëŒì§„ (ì‹œì¥ ì£¼ë„ì£¼)', 'DB Signal', 'Hybrid Signal', 'ê¸°íƒ€'].
 - **strategySummary**: Write a concise rationale explaining WHY this stock is a top pick now, referencing how it matches the chosen strategy.
 - **aiConfidence**: Your conviction level (0-100), based on how perfectly it fits the strategy's rules.
 - **keyLevels**: Define precise, actionable price levels for entry, stop-loss, and the first target, based on the strategy's rules.
 - **id**: Use format \`{ticker}-{strategyName}\`.
-- **strategyType**: 'SwingTrade' is the default unless the context or strategy name (e.g., ?í•œê°€) strongly suggests 'DayTrade'.
+- **strategyType**: 'SwingTrade' is the default unless the context or strategy name (e.g., ?ê³¹ë¸³åª›Â€) strongly suggests 'DayTrade'.
 - Create a final 'summary' of your overall decision-making process.
 - If no candidates were selected in the context, return an empty 'playbooks' array.
 
@@ -275,7 +275,7 @@ Respond ONLY with a single, valid JSON object matching the provided schema.
     const fullPlaybooks = result.playbooks.map((p: any) => ({
         ...p,
         analysisChecklist: [],
-        isUserRecommended: candidates.find(c => c.ticker === p.ticker)?.rationale === '»ç¿ëÀÚ °ü½ÉÁ¾¸ñ',
+        isUserRecommended: candidates.find(c => c.ticker === p.ticker)?.rationale === 'ì‚¬ìš©ì ê´€ì‹¬ì¢…ëª©',
         addedAt: new Date().toISOString(),
         source: 'gemini' as 'gemini'
     }));
@@ -325,8 +325,8 @@ export async function fetchActiveSignals(
             localSignals.push({
                 type: 'NEUTRAL',
                 ticker: p.ticker, stockName: p.stockName,
-                reason: `?¤ì‹œê°?ê°€ê²??•ë³´ë¥?ê°€?¸ì˜¤?????¤íŒ¨?˜ì—¬ ? í˜¸ ?œì„±???¬ë?ë¥??•ì¸?????†ìŠµ?ˆë‹¤. (${'error' in priceResult ? priceResult.error : 'Unknown error'})`,
-                conflictingSignals: ['?°ì´???¤ë¥˜'], warning: 'ê°€ê²?ì¡°íšŒ ?¤íŒ¨',
+                reason: `?ã…¼ë–†åª›?åª›Â€å¯ƒ??ëº£ë‚«ç‘œ?åª›Â€?ëª„ì‚¤?????ã…½ë™£?ì„ë¿¬ ?ì¢ìƒ‡ ?ì’–ê½¦???Ñ‰?ç‘œ??ëº¤ì”¤?????ë†ë’¿?ëˆë–. (${'error' in priceResult ? priceResult.error : 'Unknown error'})`,
+                conflictingSignals: ['?ê³—ì” ???ã…»ìªŸ'], warning: 'åª›Â€å¯ƒ?è­°ê³ ì‰¶ ?ã…½ë™£',
             });
             continue;
         }
@@ -339,8 +339,8 @@ export async function fetchActiveSignals(
             localSignals.push({
                 type: 'NEUTRAL',
                 ticker: p.ticker, stockName: p.stockName,
-                reason: `? í˜¸ê°€ ë¬´íš¨?”ë˜?ˆìŠµ?ˆë‹¤. ?„ì¬ê°€(${currentPrice.toLocaleString()})ê°€ ?ì ˆ ê¸°ì?ê°€(${stopLossPrice.toLocaleString()})ë¥??˜í–¥ ?´íƒˆ?ˆìŠµ?ˆë‹¤.`,
-                conflictingSignals: ['?ì ˆ ê¸°ì? ?„ë‹¬'], warning: '?Œë ˆ?´ë¶ ë¬´íš¨',
+                reason: `?ì¢ìƒ‡åª›Â€ è‡¾ëŒ„ìŠš?ë¶¾ë¦º?ë‰ë’¿?ëˆë–. ?ê¾©ì˜±åª›Â€(${currentPrice.toLocaleString()})åª›Â€ ?ë¨¯ì … æ¹²ê³—?åª›Â€(${stopLossPrice.toLocaleString()})ç‘œ??ì„‘ë¼¢ ?ëŒ„ê¹‰?ë‰ë’¿?ëˆë–.`,
+                conflictingSignals: ['?ë¨¯ì … æ¹²ê³—? ?ê¾¨ë––'], warning: '?ëš®ì …?ëŒ€í„¿ è‡¾ëŒ„ìŠš',
             });
             continue;
         }
@@ -353,8 +353,8 @@ export async function fetchActiveSignals(
                 tradingPlan: {
                     entryPrice: p.keyLevels.entry,
                     stopLoss: p.keyLevels.stopLoss,
-                    targets: [p.keyLevels.target || `?ë™ ê³„ì‚°`],
-                    positionSizing: `(AI ì¶”ì²œ ë¹„ì¤‘)`,
+                    targets: [p.keyLevels.target || `?ë¨®ë£ æ€¨ê¾©ê¶›`],
+                    positionSizing: `(AI ç•°ë¶¿ì¿‡ é®ê¾©ì¨·)`,
                     planRationale: p.strategySummary,
                 },
             });
@@ -447,7 +447,7 @@ All text must be in Korean. If no new signals are found in the context, return a
 
 export async function clearPlaybookFromDB(marketTarget: MarketTarget): Promise<void> {
     if (!supabase) return;
-    await supabase.from('alpha_engine_playbooks').delete().eq('market', marketTarget);
+    // [FIX] DELETE SKIPPED
 }
 
 export async function scanForDayTraderSignals(marketTarget: MarketTarget, watchlist: UserWatchlistItem[]): Promise<DayTraderSignal[]> {
@@ -517,16 +517,16 @@ Your universe is the provided user watchlist for the ${marketInfo[marketTarget].
 **Your Task:**
 Using Google Search, get the LATEST INTRADAY chart data and volume profiles for the stocks in the watchlist. Find 1-3 stocks matching these specific patterns:
 
-**1. 3rd Breakout Pattern (3ì°??ŒíŒŒ):**
+**1. 3rd Breakout Pattern (3ï§¡??ëš°ë™†):**
    - A stock that has tested a resistance level twice and is now breaking out on the **3rd attempt**.
    - This is a high-probability setup emphasized by Soogeup Danta Wang.
 
-**2. Morning Gap Play (?¥ì´ˆë°?ê°?ƒ??:**
+**2. Morning Gap Play (?Î¼í¹è«›?åª›?ê¸½??:**
    - Stocks that gapped up (>3-5%) at the open.
    - Crucial: They must have held support after the gap and are now breaking their morning high.
    - Avoid stocks that gapped up and are continuously sliding down (Gap Fill/Exhaustion).
 
-**3. Execution Strength (ì²´ê²°ê°•ë„ & ?¸ê?ì°?:**
+**3. Execution Strength (ï§£ë‹¿ê»åª›ëº£ë£„ & ?ë©¸?ï§¡?:**
    - Look for evidence of **aggressive buying**.
    - Since you cannot see the real-time order book, infer "Execution Strength" from volume analysis:
      - Is volume increasing on up-ticks?
@@ -577,13 +577,37 @@ export async function generatePlaybooksForWatchlist(
     if (!ai) throw new Error(AI_DISABLED_ERROR_MESSAGE);
     if (candidates.length === 0) return [];
 
+    // [Batch Processing] Process in chunks of 5 to prevent timeout
+    const BATCH_SIZE = 5;
+    const allPlaybooks: StrategyPlaybook[] = [];
+
+    console.log(`[AlphaEngine] Processing ${candidates.length} candidates in batches of ${BATCH_SIZE}...`);
+
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        const batch = candidates.slice(i, i + BATCH_SIZE);
+        console.log(`[AlphaEngine] Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(candidates.length / BATCH_SIZE)}: Processing ${batch.length} stocks...`);
+
+        const batchPlaybooks = await generatePlaybooksForBatch(batch, marketTarget);
+        allPlaybooks.push(...batchPlaybooks);
+    }
+
+    console.log(`[AlphaEngine] Total playbooks generated: ${allPlaybooks.length}`);
+    return allPlaybooks;
+}
+
+async function generatePlaybooksForBatch(
+    candidates: { ticker: string; stockName: string; rationale: string }[],
+    marketTarget: MarketTarget
+): Promise<StrategyPlaybook[]> {
+    if (!ai) throw new Error(AI_DISABLED_ERROR_MESSAGE);
+
     const playbookSchema = {
         type: Type.OBJECT,
         properties: {
             id: { type: Type.STRING },
             stockName: { type: Type.STRING },
             ticker: { type: Type.STRING },
-            strategyName: { type: Type.STRING, enum: ['VCP (ë³€?™ì„± ì¶•ì†Œ ?¨í„´)', 'Cup and Handle (ÄÅ¾ØÇÚµé)', 'ÇÃ·§ º£ÀÌ½º(Flat Base)', '»ó½Â »ï°¢Çü(Ascending Triangle)', 'AI ë§¤ì§‘ë´??¬ì°© (ê¸°ê?/?¸êµ­???ëŒ??', 'AI ?í•œê°€ ?¬ì°© ?”ì§„ (?œì¥ ì£¼ë„ì£?', 'DB Signal', 'Hybrid Signal', '±âÅ¸'] },
+            strategyName: { type: Type.STRING, enum: ['VCP (è¹‚?ìˆˆê½¦ ç•°ëº¤ëƒ¼ ?â‘¦ê½©)', 'Cup and Handle (ì»µì•¤í•¸ë“¤)', 'í”Œë« ë² ì´ìŠ¤(Flat Base)', 'ìƒìŠ¹ ì‚¼ê°í˜•(Ascending Triangle)', 'AI ç•™ã…¼ì­›éŠ??ÑŠê°‘ (æ¹²ê³Œ?/?ë©¸ë…???ë¾ê±£??', 'AI ?ê³¹ë¸³åª› ?ÑŠê°‘ ?ë¶¿ì­Š (?ì’–ì˜£ äºŒì‡°ë£„äºŒ?', 'DB Signal', 'Hybrid Signal', 'ê¸°íƒ€'] },
             strategySummary: { type: Type.STRING },
             aiConfidence: { type: Type.NUMBER },
             keyLevels: { type: Type.OBJECT, properties: { entry: { type: Type.STRING }, stopLoss: { type: Type.STRING }, target: { type: Type.STRING } }, required: ['entry', 'stopLoss', 'target'] },
@@ -612,7 +636,7 @@ You are the JIKTOO Alpha Engine. Your task is to perform a high-priority scan on
 **YOUR TASK:**
 1.  **Analyze each stock:** Use your internal knowledge and the reference document below to determine the most applicable swing trading strategy for each stock *right now*.
 2.  **TIME SENSITIVITY RULE (CRITICAL):**
-    - **Closing Bell (Á¾°¡ ¹èÆÃ):** ONLY suggest this if the Current Market Time is within 1 hour of market close (KR: 14:30-15:30, US: 15:00-16:00). If it is earlier, suggest 'SwingTrade' or 'DayTrade' instead.
+    - **Closing Bell (ì¢…ê°€ ë°°íŒ…):** ONLY suggest this if the Current Market Time is within 1 hour of market close (KR: 14:30-15:30, US: 15:00-16:00). If it is earlier, suggest 'SwingTrade' or 'DayTrade' instead.
 3.  **Generate Playbooks:** For each stock, create a detailed \`StrategyPlaybook\` JSON object. Define a clear strategy, confidence score, and precise key levels for entry, stop-loss, and target.
 4.  **Prioritize Actionability:** The user has requested this scan manually, so focus on providing clear, actionable plans.
 
@@ -622,7 +646,8 @@ ${SWING_STRATEGIES_DOCUMENT}
 ---
 
 **CRITICAL RULES:**
-- All text MUST be in **KOREAN (ÇÑ±¹¾î**.
+- All text MUST be in **KOREAN (í•œêµ­ì–´)**. Do NOT use English for explanations.
+- Translate all technical terms to Korean context where appropriate (e.g., Pivot Point -> í”¼ë²— í¬ì¸íŠ¸, Volatility -> ë³€ë™ì„±).
 ${ANTI_HALLUCINATION_RULE}
 
 Respond ONLY with a valid JSON array of objects matching the provided schema.`;
@@ -644,12 +669,12 @@ Respond ONLY with a valid JSON array of objects matching the provided schema.`;
         if (!candidate) return ['user'];
 
         const r = candidate.rationale;
-        if (r.includes('Á¾°¡¹èÆÃ')) return ['bfl'];
-        if (r.includes('Àç·á ·¹ÀÌ´õ')) return ['material'];
-        if (r.includes('ÆĞÅÏ ½ºÅ©¸®³Ê')) return ['pattern'];
-        if (r.includes('¼ö±Ş µ¶¼ö¸®')) return ['supply_eagle'];
+        if (r.includes('ì¢…ê°€ë°°íŒ…')) return ['bfl'];
+        if (r.includes('ì¬ë£Œ ë ˆì´ë”')) return ['material'];
+        if (r.includes('íŒ¨í„´ ìŠ¤í¬ë¦¬ë„ˆ')) return ['pattern'];
+        if (r.includes('ìˆ˜ê¸‰ ë…ìˆ˜ë¦¬')) return ['supply_eagle'];
         if (r.includes('Eagle Eye') || r.includes('Volume Spike')) return ['scanner'];
-        if (r === '»ç¿ëÀÚ °ü½ÉÁ¾¸ñ') return ['user'];
+        if (r === 'ì‚¬ìš©ì ê´€ì‹¬ì¢…ëª©') return ['user'];
 
         // Default: if we can't determine, mark as scanner (since it came from forceGlobalScan)
         return ['scanner'];
@@ -715,7 +740,7 @@ async function fetchAlphaPreviewLatest(ticker: string): Promise<any | null> {
             ticker: data.ticker,
             stockName: data.stock_name,
             market: data.market,
-            rationale: plan.planRationale || data.signal_type || 'ºĞ¼® µ¥ÀÌÅÍ',
+            rationale: plan.planRationale || data.signal_type || 'ë¶„ì„ ë°ì´í„°',
             aiScore: data.ai_confidence,
             pivotPoint: plan.entryPrice || 'N/A',
             updated_at: data.created_at,

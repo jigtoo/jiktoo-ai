@@ -207,11 +207,10 @@ export async function runVolumeSpikeScanner(marketTarget: MarketTarget): Promise
     return await executeScan(prompt, 'Volume-Spike');
 }
 
-// Helper to execute Gemini scan
 async function executeScan(prompt: string, defaultMatchType: string = 'Scan-Result'): Promise<ScannerResult[]> {
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.0-flash-001',
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
@@ -265,7 +264,10 @@ async function executeScan(prompt: string, defaultMatchType: string = 'Scan-Resu
             volumeStrength: item.volumeSpike ? 100 : 50,
             reason: item.rationale || item.reason || 'No rationale provided',
             technicalSignal: item.rationale || item.reason
-        })).filter(item => item.ticker !== 'N/A' && item.ticker !== 'Unknown' && item.ticker.length > 0);
+        })).filter(item => {
+            const invalid = ['ABC', 'XYZ', 'LMN', 'GHI', 'DEF', 'JKL', 'N/A', 'UNKNOWN', 'TEST', 'SAMPLE'];
+            return item.ticker && item.ticker.length > 1 && !invalid.includes(item.ticker.toUpperCase());
+        });
 
     } catch (error) {
         console.error(`[ScannerTools] Scan failed for prompt type ${defaultMatchType}:`, error);

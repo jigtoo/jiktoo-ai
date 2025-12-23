@@ -26,10 +26,13 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({ mark
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let isMounted = true;
         const fetchTrades = async () => {
             if (!supabase) {
-                setError('Supabase client not initialized');
-                setLoading(false);
+                if (isMounted) {
+                    setError('Supabase client not initialized');
+                    setLoading(false);
+                }
                 return;
             }
 
@@ -40,21 +43,39 @@ export const PerformanceDashboard: React.FC<PerformanceDashboardProps> = ({ mark
                     .order('created_at', { ascending: false })
                     .limit(200);
 
-                if (fetchError) {
-                    console.error('[PerformanceDashboard] Failed to fetch trades:', fetchError);
-                    setError(fetchError.message || 'Failed to fetch trades');
-                } else {
-                    setTrades((data || []) as TradeRecord[]);
-                    setError(null);
+                if (isMounted) {
+                    if (fetchError) {
+                        console.error('[PerformanceDashboard] Failed to fetch trades:', fetchError);
+                        // Don't show error to user if it's just empty or RLS, show empty state
+                        // setError(fetchError.message || 'Failed to fetch trades');
+                        setTrades([]);
+                    } else {
+                        setTrades((data || []) as TradeRecord[]);
+                        setError(null);
+                    }
                 }
             } catch (err) {
                 console.error('[PerformanceDashboard] Exception fetching trades:', err);
-                setError('Unexpected error fetching trades');
+                // setError('Unexpected error fetching trades');
             } finally {
-                setLoading(false);
+                if (isMounted) setLoading(false);
             }
         };
+
         fetchTrades();
+
+        // Safety Timeout: Force stop loading after 5 seconds
+        const timeout = setTimeout(() => {
+            if (isMounted && loading) {
+                console.warn('[PerformanceDashboard] Fetch timed out. Showing empty state.');
+                setLoading(false);
+            }
+        }, 5000);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timeout);
+        };
     }, []);
 
     // Compute basic stats

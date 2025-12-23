@@ -1,5 +1,5 @@
-
-import { generateContentWithRetry } from '../gemini/client';
+﻿import { generateContentWithRetry } from '../gemini/client';
+import { sanitizeJsonString } from '../utils/jsonUtils';
 import type { MarketTarget } from '../../types';
 
 interface LogicChain {
@@ -15,7 +15,7 @@ interface LogicChain {
 class MarketLogicService {
 
     public async analyzeMarketStructure(market: MarketTarget): Promise<{ report: string; chains: LogicChain[] }> {
-        console.log(`[MarketLogic] 📡 Running Insight Radar for ${market}...`);
+        console.log(`[MarketLogic] 🔭 Running Insight Radar for ${market}...`);
 
         // S-Class Logic Prompt (Adapted from User Request)
         const prompt = `
@@ -37,7 +37,7 @@ class MarketLogicService {
            - Section A: Top 5 Keywords (Table: Keyword | Context | Growth)
            - Section B: Top 3 Logic Chains (Table: Keyword -> Sector -> Ticker)
            - Section C: 3-Line Executive Summary at the top.
-           - Use Emojis (🇰🇷/🇺🇸) explicitly.
+           - Use Emojis (📈/📉) explicitly.
         
         2. "structured_data": An array of LogicChain objects for the trading engine:
            [
@@ -60,13 +60,12 @@ class MarketLogicService {
 
         try {
             const result = await generateContentWithRetry({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.0-flash-001',
                 contents: prompt
             });
 
-            const text = result.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const data = JSON.parse(cleanText);
+            const text = result.text || '{}';
+            const data = JSON.parse(sanitizeJsonString(text));
 
             return {
                 report: data.report_markdown || "보고서 생성 실패",
@@ -77,7 +76,7 @@ class MarketLogicService {
             console.error('[MarketLogic] Analysis Failed:', error);
             // Fallback
             return {
-                report: "⚠️ 시장 분석 데이터를 가져오는데 실패했습니다.",
+                report: "최신 시장 분석 데이터를 가져오는데 실패했습니다.",
                 chains: []
             };
         }

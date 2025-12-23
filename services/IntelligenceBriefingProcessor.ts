@@ -1,4 +1,4 @@
-﻿// services/IntelligenceBriefingProcessor.ts
+// services/IntelligenceBriefingProcessor.ts
 // This service processes user intelligence briefings and converts them into actionable trading signals
 
 import { supabase } from './supabaseClient';
@@ -47,34 +47,34 @@ class IntelligenceBriefingProcessor {
 
             // 2. AI Analysis
             const prompt = `
-?뱀떊? ?꾨Ц ?몃젅?대뜑???명뀛由ъ쟾??釉뚮━?묒쓣 遺꾩꽍?섎뒗 AI?낅땲??
-?ъ슜?먭? ?쒓났???뺣낫瑜?諛뷀깢?쇰줈 ?ㅽ뻾 媛?ν븳 留ㅻℓ ?좏샇瑜?異붿텧?섏꽭??
+?�신?� ?�문 ?�레?�더???�텔리전??브리?�을 분석?�는 AI?�니??
+?�용?��? ?�공???�보�?바탕?�로 ?�행 가?�한 매매 ?�호�?추출?�세??
 
-?쒕ぉ: ${(briefing as any).title}
-?댁슜: ${(briefing as any).content}
-愿???곗빱: ${(briefing as any).related_tickers || '?놁쓬'}
-異쒖쿂: ${(briefing as any).source_url || '?놁쓬'}
+?�목: ${(briefing as any).title}
+?�용: ${(briefing as any).content}
+관???�커: ${(briefing as any).related_tickers || '?�음'}
+출처: ${(briefing as any).source_url || '?�음'}
 
-?ㅼ쓬 JSON ?뺤떇?쇰줈 ?묐떟?섏꽭??
+?�음 JSON ?�식?�로 ?�답?�세??
 {
-    "actionable": boolean (???뺣낫媛 利됱떆 ?ㅽ뻾 媛?ν븳 留ㅻℓ ?좏샇瑜??ы븿?섎뒗媛?),
+    "actionable": boolean (???�보가 즉시 ?�행 가?�한 매매 ?�호�??�함?�는가?),
     "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL",
     "urgency": "HIGH" | "MEDIUM" | "LOW",
-    "relatedTickers": ["醫낅ぉ肄붾뱶 諛곗뿴"],
+    "relatedTickers": ["종목코드 배열"],
     "tradingSignals": [
         {
-            "ticker": "醫낅ぉ肄붾뱶",
+            "ticker": "종목코드",
             "action": "BUY" | "SELL" | "WATCH",
             "confidence": 0-100,
-            "reasoning": "援ъ껜?곸씤 洹쇨굅"
+            "reasoning": "구체?�인 근거"
         }
     ],
-    "marketInsights": ["?쒖옣 ?꾨컲??????몄궗?댄듃 諛곗뿴"]
+    "marketInsights": ["?�장 ?�반???�???�사?�트 배열"]
 }
 `;
 
             const aiResponse = await generateContentWithRetry({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.0-flash-001',
                 contents: prompt,
                 // config: { responseMimeType: 'application/json' } // Removed to prevent Tool/JSON conflict
             });
@@ -104,7 +104,7 @@ class IntelligenceBriefingProcessor {
                     ticker: analysis.relatedTickers[0] || null,
                     action: 'ANALYSIS',
                     confidence: 90,
-                    message: `[?ъ슜??釉뚮━??遺꾩꽍] ${(briefing as any).title} ??${analysis.tradingSignals.length}媛?留ㅻℓ ?좏샇 異붿텧`,
+                    message: `[?�용??브리??분석] ${(briefing as any).title} ??${analysis.tradingSignals.length}�?매매 ?�호 추출`,
                     details: {
                         briefingId,
                         analysis,
@@ -149,7 +149,7 @@ class IntelligenceBriefingProcessor {
 
                 // If actionable, trigger AutoPilot
                 if (analysis?.actionable && analysis.tradingSignals.length > 0) {
-                    console.log(`[BriefingProcessor] ?렞 Actionable signals found! Forwarding to AutoPilot...`);
+                    console.log(`[BriefingProcessor] ?�� Actionable signals found! Forwarding to AutoPilot...`);
 
                     // Import dynamically to avoid circular dependency
                     const { autoPilotService } = await import('./AutoPilotService');

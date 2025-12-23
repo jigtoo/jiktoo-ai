@@ -1,4 +1,4 @@
-// services/gemini/materialService.ts
+﻿// services/gemini/materialService.ts
 
 import { SchemaType } from "@google/generative-ai";
 
@@ -32,7 +32,7 @@ export async function fetchDetectedMaterials(marketTarget: MarketTarget): Promis
 
     const gatheringPrompt = `
 
-You are an AI Market Intelligence Analyst specializing in detecting "pre-news" market-moving materials (ë£? for the ${marketInfo[marketTarget].name}.
+You are an AI Market Intelligence Analyst specializing in detecting "pre-news" market-moving materials (챘짙? for the ${marketInfo[marketTarget].name}.
 
 Your mission is to act as a multi-channel radar, scanning for early, subtle signals that precede major news announcements.
 
@@ -94,7 +94,7 @@ ${gatheredDataContext}
 
 1.  **Aggregate Signals:** Group related signals under one material.
 
-2.  **Create Title:** Write a concise, compelling title (e.g., "Aê¸°ì?��? Bê¸°ì?��?M&A ë£¨ë¨¸ ì°?).
+2.  **Create Title:** Write a concise, compelling title (e.g., "A챗쨍째챙?붴? B챗쨍째챙?붴?M&A 챘짙짢챘짢쨍 챙째?).
 
 3.  **Assign Reliability:**
 

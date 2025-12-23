@@ -1,4 +1,4 @@
-// services/gemini/aiTraderService.ts
+﻿// services/gemini/aiTraderService.ts
 
 import { SchemaType } from "@google/generative-ai";
 import type { AITurnDecision, AIPortfolioState, MarketHealth, DashboardStock, AITurnType, AITraderDiagnosis, AITradeLogEntry, MarketTarget } from '../../types';
@@ -7,7 +7,7 @@ import { sanitizeJsonString } from '../utils/jsonUtils';
 import { ANTI_HALLUCINATION_RULE } from './prompts/protocols';
 
 export async function fetchAITurnDecision(portfolio: AIPortfolioState, marketHealth: MarketHealth | null, candidates: DashboardStock[] | null, turnType: AITurnType, marketTarget: MarketTarget): Promise<AITurnDecision> {
-    if (!ai) throw new Error(`AI ?�레?�더 기능???�용?????�습?�다. ${AI_DISABLED_ERROR_MESSAGE}`);
+    if (!ai) throw new Error(`AI ?몃젅?대뜑 湲곕뒫???ъ슜?????놁뒿?덈떎. ${AI_DISABLED_ERROR_MESSAGE}`);
 
     const decisionSchema = {
         type: SchemaType.OBJECT,
@@ -82,7 +82,7 @@ export async function fetchAITurnDecision(portfolio: AIPortfolioState, marketHea
 }
 
 export async function fetchAITraderDiagnosis(portfolio: AIPortfolioState, logs: AITradeLogEntry[], marketTarget: MarketTarget): Promise<AITraderDiagnosis> {
-    if (!ai) throw new Error(`AI ?�레?�더 진단 기능???�용?????�습?�다. ${AI_DISABLED_ERROR_MESSAGE}`);
+    if (!ai) throw new Error(`AI ?몃젅?대뜑 吏꾨떒 湲곕뒫???ъ슜?????놁뒿?덈떎. ${AI_DISABLED_ERROR_MESSAGE}`);
 
     const diagnosisSchema = {
         type: SchemaType.OBJECT,

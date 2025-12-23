@@ -3,7 +3,8 @@ import { supabase } from './supabaseClient';
 // Pricing Rates (per 1M tokens)
 const RATES = {
     'gemini-1.5-flash': { input: 0.075, output: 0.30 },
-    'gemini-1.5-pro': { input: 3.50, output: 10.50 }
+    'gemini-1.5-pro': { input: 3.50, output: 10.50 },
+    'gemini-2.0-flash-001': { input: 0.00, output: 0.00 } // Free during preview
 };
 
 export interface MonthlyUsageStats {

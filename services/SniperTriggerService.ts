@@ -33,7 +33,7 @@ export interface SniperCandidate {
 // Key: Ticker
 type CandidateMap = Map<string, SniperCandidate>;
 
-class SniperTriggerService {
+export class SniperTriggerService {
     // Stage 2 & 3 Candidates
     private candidates: CandidateMap = new Map();
 
@@ -186,22 +186,76 @@ class SniperTriggerService {
      * Returns Trigger if Breakout occurs
      */
     private async checkSniperTrigger(candidate: SniperCandidate, marketTarget: MarketTarget): Promise<SniperTrigger | null> {
-        // Fetch Real-time Snapshot
-        const data = await _fetchLatestPrice(candidate.ticker, candidate.stockName, marketTarget);
-        if (!data || data.volume === 0) return null;
+        // [Sniper V2.0] Precision Strike Logic
 
-        // Logic: Volume Spike (> 500k) AND Price Up (> 1%)
-        const isVolumeSpike = data.volume > 500000;
-        const isBreakout = data.changeRate > 1.0;
+        // 1. Fetch recent 1-minute candles for Context (RVol & Wick Analysis)
+        const minuteCandles = await fetchCandles(candidate.ticker, '1', 21);
 
-        if (isVolumeSpike && isBreakout) {
-            console.log(`[Sniper] 🔫 FIRE: ${candidate.stockName}`);
+        // If live data failing, fallback to snapshot (less precise)
+        if (!minuteCandles || minuteCandles.length < 5) {
+            return this.checkLegacyTrigger(candidate, marketTarget);
+        }
+
+        const currentCandle = minuteCandles[minuteCandles.length - 1]; // Latest (forming)
+        const historyCandles = minuteCandles.slice(0, minuteCandles.length - 1);
+
+        // 2. Relative Volume (RVol) Calc
+        // Calculate average volume of last 20 mins
+        const totalVol = historyCandles.reduce((sum, c) => sum + c.volume, 0);
+        const avgVol = totalVol / historyCandles.length || 1;
+        const rVol = currentCandle.volume / avgVol;
+
+        // Condition A: RVol Spike (Aggressive Mode: > 1.5x average)
+        const isRVolSpike = rVol > 1.5;
+
+        // Condition B: Anti-Wick (Climax Protection)
+        // Price must be closing near high (Upper 40% of the candle is acceptable in Aggressive Mode)
+        const candleRange = currentCandle.high - currentCandle.low;
+        const bodyPosition = currentCandle.close - currentCandle.low;
+        const isStrongClose = candleRange === 0 || (bodyPosition / candleRange) > 0.6;
+
+        // Condition C: Momentum (Price Change > 0.3% in 1 min OR Breakout of High)
+        // Aggressive Mode: Catch early momentum (> 0.3%)
+        const prevClose = historyCandles[historyCandles.length - 1].close;
+        const percentChange1m = ((currentCandle.close - prevClose) / prevClose) * 100;
+        const isMomentum = percentChange1m > 0.3;
+
+        // [Sniper Logic] Combined Trigger
+        if (isRVolSpike && isStrongClose && isMomentum) {
+            console.log(`[Sniper] 🔫 FIRE V2: ${candidate.stockName}`);
             return {
                 ticker: candidate.ticker,
                 stockName: candidate.stockName,
                 type: 'HUNTER_BREAKOUT',
-                score: 100,
-                details: `[Sniper] 60분 조준 후 1분 돌파 성공!\n(Vol: ${data.volume}, +${data.changeRate}%)`,
+                score: 95,
+                details: `[Precision Strike] RVol: ${rVol.toFixed(1)}x, 1m Change: +${percentChange1m.toFixed(2)}%`,
+                currentPrice: currentCandle.close,
+                changeRate: percentChange1m,
+                volume: currentCandle.volume
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Legacy Trigger (Backup for low data mode)
+     */
+    private async checkLegacyTrigger(candidate: SniperCandidate, marketTarget: MarketTarget): Promise<SniperTrigger | null> {
+        const data = await _fetchLatestPrice(candidate.ticker, candidate.stockName, marketTarget);
+        if (!data || data.volume === 0) return null;
+
+        // Logic: Absolute Volume > 500k (Optimized for Large Caps only)
+        const isVolumeSpike = data.volume > 500_000;
+        const isBreakout = data.changeRate > 1.0;
+
+        if (isVolumeSpike && isBreakout) {
+            return {
+                ticker: candidate.ticker,
+                stockName: candidate.stockName,
+                type: 'HUNTER_BREAKOUT',
+                score: 80,
+                details: `[Legacy Sniper] Vol: ${data.volume}, +${data.changeRate}%`,
                 currentPrice: data.price,
                 changeRate: data.changeRate,
                 volume: data.volume

@@ -1,12 +1,15 @@
 
 // services/gemini/client.ts
-import { GoogleGenAI, type GenerateContentResponse } from "@google/genai";
+// services/gemini/client.ts
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { IS_GEMINI_ENABLED, GEMINI_API_KEY } from '../../config';
+import { tokenUsageService } from '../TokenUsageService';
 
 // FIX: Per @google/genai guidelines, use process.env.API_KEY directly for initialization.
 // This also resolves the TypeScript error for `import.meta.env`.
+console.log("Initializing Gemini Client. Key present?", !!GEMINI_API_KEY, "Length:", GEMINI_API_KEY?.length);
 export const ai = IS_GEMINI_ENABLED && GEMINI_API_KEY
-    ? new GoogleGenAI({ apiKey: GEMINI_API_KEY })
+    ? new GoogleGenerativeAI(GEMINI_API_KEY)
     : null;
 
 export const AI_DISABLED_ERROR_MESSAGE = "AI 기능을 사용할 수 없습니다. Gemini API 키가 설정되지 않았습니다. 프로젝트 루트의 .env 파일에 API_KEY를 설정했는지 확인해주세요.";
@@ -21,60 +24,103 @@ export const AI_DISABLED_ERROR_MESSAGE = "AI 기능을 사용할 수 없습니�
  * @returns GenerateContentResponse
  */
 export async function generateContentWithRetry(
-    options: any, // The type is complex, using 'any' for simplicity
+    options: any,
     retries = 2,
     delay = 1000,
     priority: 'high' | 'normal' | 'low' = 'normal'
-): Promise<GenerateContentResponse> {
+): Promise<any> { // Return any to avoid strict type mismatch with old SDK
     if (!ai) {
         throw new Error(AI_DISABLED_ERROR_MESSAGE);
     }
 
-    // Import rate limiter dynamically to avoid circular dependencies
     const { geminiRateLimiter } = await import('../RateLimiterService');
 
-    // Use rate limiter to queue the request
     return geminiRateLimiter.enqueue(async () => {
         for (let i = 0; i <= retries; i++) {
             try {
-                // Validate options before making the call
-                if (!options || typeof options !== 'object') {
-                    throw new Error(`Invalid Gemini API options: ${JSON.stringify(options)}`);
+                // Legacy SDK: Get model instance first
+                let modelName = options.model || 'gemini-2.0-flash-001'; // Default to 2.0 Flash as 1.5-flash alias seems flaky
+                if (modelName === 'gemini-2.0-flash-001') {
+                    // Fallback if 2.0 not supported in old SDK env, but usually it works if API supports it
                 }
 
-                // Force model override to gemini-2.0-flash-001 (Stable 2.0 Flash)
-                if (!options.model || options.model === 'gemini-1.5-flash' || options.model === 'gemini-1.5-flash-001') {
-                    options.model = 'gemini-2.0-flash-001';
+                // Pass generation config if present
+                // IMPORTANT: tools must not be inside generationConfig
+                const rawConfig = options.generationConfig || options.config || {};
+                const { tools: configTools, ...genConfig } = rawConfig;
+                const tools = options.tools || configTools;
+
+                const model = ai.getGenerativeModel({
+                    model: modelName,
+                    generationConfig: genConfig,
+                    tools: tools,
+                });
+
+                // Construct single request object for modern SDK compliance
+                const request: any = {
+                    contents: [],
+                };
+
+                // Handle contents (string or parts array)
+                if (typeof options.contents === 'string') {
+                    request.contents = [{ role: 'user', parts: [{ text: options.contents }] }];
+                } else if (Array.isArray(options.contents)) {
+                    request.contents = options.contents;
+                } else if (options.contents) {
+                    request.contents = [options.contents];
                 }
 
-                const response = await ai.models.generateContent(options);
-
-                // Validate response structure
-                if (!response || typeof response !== 'object') {
-                    throw new Error(`Invalid Gemini API response structure: ${typeof response}`);
+                // Attach tools and config at top level
+                if (tools && Array.isArray(tools) && tools.length > 0) {
+                    request.tools = tools;
                 }
 
-                // Log Token Usage
-                if (response.usageMetadata) {
-                    // Import dynamically to avoid circular dependency issues if any, though unlikely here
-                    const { tokenUsageService } = await import('../TokenUsageService');
-                    tokenUsageService.logUsage(
-                        options.model || 'gemini-2.0-flash-001',
-                        response.usageMetadata.promptTokenCount || 0,
-                        response.usageMetadata.candidatesTokenCount || 0
-                    );
+                if (Object.keys(genConfig).length > 0) {
+                    request.generationConfig = genConfig;
                 }
 
-                return response;
+                // Debug log to trace what we are actually sending to the model
+                console.log(`[Gemini Request] Model: ${modelName}, Tools: ${!!request.tools}, ConfigKeys: ${Object.keys(genConfig).join(',')}`);
+
+                // [Fix] Add timeout to prevent infinite loading
+                const timeoutMs = 60000;
+                const generatePromise = model.generateContent(request);
+
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error(`Gemini Request Timed Out after ${timeoutMs / 1000}s`)), timeoutMs)
+                );
+
+                const result: any = await Promise.race([generatePromise, timeoutPromise]);
+
+                const response = await result.response;
+                const text = response.text();
+
+                // shim to match expected structure somewhat
+                return {
+                    text: text, // Direct access for convenience (ScannerTools.ts uses this)
+                    candidates: [{
+                        content: { parts: [{ text: text }] }
+                    }],
+                    usageMetadata: response.usageMetadata,
+                    response: { // For compatibility with older code expecting response.response.text()
+                        text: () => text
+                    }
+                };
+
             } catch (error: any) {
                 const errorMessage = (error?.message || error?.toString?.() || String(error)).toLowerCase();
                 const isRetryable = errorMessage.includes('internal') ||
                     errorMessage.includes('500') ||
                     errorMessage.includes('server error') ||
-                    errorMessage.includes('service unavailable') ||
                     errorMessage.includes('503') ||
                     errorMessage.includes('429') ||
-                    errorMessage.includes('quota');
+                    errorMessage.includes('quota') ||
+                    errorMessage.includes('connection') ||
+                    errorMessage.includes('network') ||
+                    errorMessage.includes('fetch') ||
+                    errorMessage.includes('timeout') ||
+                    errorMessage.includes('econnreset') ||
+                    errorMessage.includes('enotfound');
 
                 if (isRetryable && i < retries) {
                     console.warn(`[Gemini Retry] Attempt ${i + 1} failed with a retryable error. Retrying in ${delay}ms...`, error);
@@ -98,5 +144,26 @@ export async function callGemini(prompt: string): Promise<string> {
         model: "gemini-2.0-flash-001",
         contents: prompt
     });
-    return response.text || '';
+
+    // Extract text from the shimmed response structure
+    const text = response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    if (!text) {
+        console.error('[callGemini] Empty response received from Gemini API');
+        throw new Error('Empty response from Gemini API');
+    }
+
+    // Log token usage for cost tracking
+    if (response?.usageMetadata) {
+        const metadata = response.usageMetadata;
+        const inputTokens = metadata.promptTokenCount || 0;
+        const outputTokens = metadata.candidatesTokenCount || 0;
+
+        // Fire and forget - don't wait for logging
+        tokenUsageService.logUsage('gemini-2.0-flash-001', inputTokens, outputTokens).catch((err: any) => {
+            console.warn('[TokenUsage] Failed to log:', err);
+        });
+    }
+
+    return text;
 }

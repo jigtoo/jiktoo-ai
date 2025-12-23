@@ -1,10 +1,10 @@
 
 
-import React, { useState } from 'react';
+import React from 'react';
 import type { TenbaggerAnalysis, TenbaggerStock, TenbaggerChangeLogEntry, MarketTarget } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ErrorDisplay } from './ErrorDisplay';
-import { RocketIcon, StrategyIcon, CheckCircleIcon, AlertIcon, RefreshIcon, InfoIcon, XCircleIcon } from './icons';
+import { RocketIcon, StrategyIcon, CheckCircleIcon, RefreshIcon, InfoIcon, XCircleIcon } from './icons';
 
 interface TenbaggerDashboardProps {
     data: TenbaggerAnalysis | null;
@@ -31,8 +31,8 @@ const InitialState: React.FC<{ onFetch: () => void, isLoading: boolean, marketTa
             <p className="text-gray-400 max-w-3xl mx-auto mb-8">
                 전설적 투자자들의 원칙을 바탕으로 10배 상승 잠재력을 가진 '텐배거' 후보 10종목을 AI가 직접 선정하고, 지속적으로 관리하며 그 과정을 투명하게 보고합니다.
             </p>
-            
-            <button 
+
+            <button
                 onClick={onFetch}
                 disabled={isLoading}
                 className={`px-8 py-4 bg-gradient-to-r ${buttonClass} text-white font-bold text-lg rounded-lg shadow-lg hover:from-cyan-600 hover:to-blue-700 transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -69,10 +69,10 @@ const TenbaggerStockCard: React.FC<{ item: TenbaggerStock }> = ({ item }) => {
         '주의': 'bg-yellow-500/20 text-yellow-300',
         '탈락': 'bg-red-500/20 text-red-300',
     };
-    
+
     const pnl = item.performanceSinceAdded;
     const pnlColor = pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-300';
-    
+
     return (
         <div className="bg-gray-800/70 border border-gray-700 rounded-xl overflow-hidden shadow-lg">
             <header className="p-4 bg-gray-900/50 flex justify-between items-start gap-4">
@@ -88,7 +88,7 @@ const TenbaggerStockCard: React.FC<{ item: TenbaggerStock }> = ({ item }) => {
                         </div>
                     </div>
                 </div>
-                 <div className="text-right flex-shrink-0">
+                <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold text-gray-300">추가 후 성과</p>
                     <p className={`text-3xl font-bold ${pnlColor}`}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%</p>
                     <p className="text-sm font-semibold text-gray-300 mt-2">텐배거 총점</p>
@@ -96,29 +96,29 @@ const TenbaggerStockCard: React.FC<{ item: TenbaggerStock }> = ({ item }) => {
                 </div>
             </header>
             <div className="p-4 space-y-4">
-                 <div className="p-3 bg-gray-900/40 rounded-lg">
+                <div className="p-3 bg-gray-900/40 rounded-lg">
                     <h5 className="font-bold text-cyan-300 mb-1">7대 황금률 스코어카드</h5>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                        <ScoreBar label="폭발적 성장성" score={item.detailedScorecard.explosiveGrowth} />
-                        <ScoreBar label="합리적 밸류에이션" score={item.detailedScorecard.reasonableValuation} />
-                        <ScoreBar label="혁신성/기술" score={item.detailedScorecard.innovation} />
-                        <ScoreBar label="소외도/모멘텀" score={item.detailedScorecard.underTheRadar} />
-                        <ScoreBar label="경영진" score={item.detailedScorecard.qualityManagement} />
-                        <ScoreBar label="재무 건전성" score={item.detailedScorecard.fortressBalanceSheet} />
-                        <ScoreBar label="성장 스토리" score={item.detailedScorecard.compellingStory} />
+                        <ScoreBar label="폭발적 성장성" score={item.detailedScorecard?.explosiveGrowth || 0} />
+                        <ScoreBar label="합리적 밸류에이션" score={item.detailedScorecard?.reasonableValuation || 0} />
+                        <ScoreBar label="혁신성/기술" score={item.detailedScorecard?.innovation || 0} />
+                        <ScoreBar label="소외도/모멘텀" score={item.detailedScorecard?.underTheRadar || 0} />
+                        <ScoreBar label="경영진" score={item.detailedScorecard?.qualityManagement || 0} />
+                        <ScoreBar label="재무 건전성" score={item.detailedScorecard?.fortressBalanceSheet || 0} />
+                        <ScoreBar label="성장 스토리" score={item.detailedScorecard?.compellingStory || 0} />
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-3 bg-gray-900/40 rounded-lg">
                         <h5 className="font-bold text-green-300 mb-2">핵심 성장 동력</h5>
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-300">
-                            {item.drivers.map((driver, i) => <li key={i}>{driver}</li>)}
+                            {Array.isArray(item.drivers) ? item.drivers.map((driver, i) => <li key={i}>{driver}</li>) : <li className="text-gray-500">데이터 없음</li>}
                         </ul>
                     </div>
                     <div className="p-3 bg-gray-900/40 rounded-lg">
-                         <h5 className="font-bold text-red-300 mb-2">핵심 리스크</h5>
+                        <h5 className="font-bold text-red-300 mb-2">핵심 리스크</h5>
                         <ul className="list-disc list-inside space-y-1 text-sm text-gray-300">
-                            {item.risks.map((risk, i) => <li key={i}>{risk}</li>)}
+                            {Array.isArray(item.risks) ? item.risks.map((risk, i) => <li key={i}>{risk}</li>) : <li className="text-gray-500">데이터 없음</li>}
                         </ul>
                     </div>
                 </div>
@@ -181,7 +181,7 @@ export const TenbaggerDashboard: React.FC<TenbaggerDashboardProps> = ({ data, is
     if (!data) {
         return <InitialState onFetch={onFetch} isLoading={isLoading || isChecking} marketTarget={marketTarget} />;
     }
-    
+
     const usButtonClass = 'from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600';
     const krButtonClass = 'from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700';
     const buttonClass = marketTarget === 'US' ? usButtonClass : krButtonClass;
@@ -198,13 +198,13 @@ export const TenbaggerDashboard: React.FC<TenbaggerDashboardProps> = ({ data, is
                     disabled={isChecking}
                     className={`flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r ${buttonClass} text-white font-bold rounded-lg shadow-lg transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-wait`}
                 >
-                    {isChecking ? <RefreshIcon className="animate-spin h-5 w-5" /> : <StrategyIcon className="h-5 w-5"/>}
+                    {isChecking ? <RefreshIcon className="animate-spin h-5 w-5" /> : <StrategyIcon className="h-5 w-5" />}
                     <span>{isChecking ? '포트폴리오 점검 중...' : 'AI 매니저, 포트폴리오 점검 및 리밸런싱'}</span>
                 </button>
             </header>
 
             {error && (
-                 <ErrorDisplay title="텐배거 클럽 업데이트 오류" message={error} onRetry={onCheckStatus} onClose={onClearError} />
+                <ErrorDisplay title="텐배거 클럽 업데이트 오류" message={error} onRetry={onCheckStatus} onClose={onClearError} />
             )}
 
             <div className="p-6 bg-gray-800/70 border-l-4 border-cyan-500 rounded-lg">
@@ -217,11 +217,11 @@ export const TenbaggerDashboard: React.FC<TenbaggerDashboardProps> = ({ data, is
                     <h3 className="text-xl font-bold text-gray-300 mb-4">매니저 로그</h3>
                     <ManagerLog log={data.changeLog} />
                 </div>
-                
+
                 <div className="lg:col-span-2 space-y-6">
-                     {data.stocks && data.stocks.map(stock => (
+                    {data.stocks && data.stocks.map(stock => (
                         <TenbaggerStockCard key={stock.ticker} item={stock} />
-                     ))}
+                    ))}
                 </div>
             </div>
         </div>

@@ -1,4 +1,4 @@
-// services/gemini/themeMapperService.ts
+﻿// services/gemini/themeMapperService.ts
 import { generateContentWithRetry } from './client';
 import { SchemaType } from '@google/generative-ai';
 
@@ -6,7 +6,7 @@ export const mapThemeToSectors = async (themeKeyword: string): Promise<string[]>
     const prompt = `
     Given the theme keyword "${themeKeyword}", identify the most relevant stock market sectors in South Korea.
     Return only the sector names as a JSON array of strings.
-    Example: ["반도�?, "IT부??]
+    Example: ["반도체", "IT부품"]
     `;
 
     try {

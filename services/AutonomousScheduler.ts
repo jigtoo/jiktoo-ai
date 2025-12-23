@@ -18,10 +18,10 @@ class AutonomousScheduler {
 
     // State tracking structure for granular daily scans
     private dailyScanStates: {
-        KR: { gap: string; morning: string; afternoon: string; closing: string };
+        KR: { gap: string; morning: string; lunch: string; afternoon: string; closing: string; journal: string; bridge: string; evolution: string };
         US: { gap: string; morning: string; afternoon: string; closing: string };
     } = {
-            KR: { gap: '', morning: '', afternoon: '', closing: '' },
+            KR: { gap: '', morning: '', lunch: '', afternoon: '', closing: '', journal: '', bridge: '', evolution: '' },
             US: { gap: '', morning: '', afternoon: '', closing: '' }
         };
 
@@ -71,8 +71,8 @@ class AutonomousScheduler {
 
     private failedTickers = new Map<string, number>(); // Ticker -> Timestamp
 
-    private constructor() {
-        // Private constructor to enforce Singleton
+    constructor() {
+        // Enforce singleton instantiation via class export
     }
 
     private async runCycle() {
@@ -111,7 +111,7 @@ class AutonomousScheduler {
                 if (day === 6 && hours < 6) isUSTradingDay = true; // Sat early morning (Fri night)
                 if (day === 1 && hours >= 22) isUSTradingDay = true; // Mon night
 
-                isMarketOpen = isUSTradingDay && ((hours >= 22 && minutes >= 30) || hours >= 23 || hours < 5);
+                isMarketOpen = isUSTradingDay && ((hours >= 22 && minutes >= 30) || hours >= 23 || hours < 6);
             }
 
             // Sync System State
@@ -151,9 +151,7 @@ class AutonomousScheduler {
 
             // [Hunter Mode] - Real-time User Strategy Scan (Runs every cycle if market is open)
             if (isMarketOpen) {
-                await this.scanForHunterStrategies(currentMarket);
-                // Gap Scan Logic (if needed)
-                await this.scanForHunterStrategies('KR', 'MORNING'); // Treat GAP as Morning for now or add explicit GAP type
+                await this.scanForHunterStrategies(currentMarket, 'MORNING'); // Standard morning/anytime scan
                 // [Sniper Mode] - CHECK WATCHLIST for 60m/1m setups
                 const { sniperTriggerService } = await import('./SniperTriggerService');
                 await sniperTriggerService.scanForTriggers(currentMarket);
@@ -172,6 +170,11 @@ class AutonomousScheduler {
                     await this.executeScan('KR', 'MORNING', todayStr);
                 }
 
+                // [12:00 ~ 13:00] LUNCH TIME CHECK (Institutional Flow & Sector Rotation)
+                if (hours === 12 && this.dailyScanStates.KR.lunch !== todayStr) {
+                    await this.executeScan('KR', 'LUNCH', todayStr);
+                }
+
                 // [13:00 ~ 14:00] AFTERNOON CONVICTION (Second Wind / Reversals)
                 // New addition based on user feedback for more frequent optimized scans
                 if (hours === 13 && this.dailyScanStates.KR.afternoon !== todayStr) {
@@ -182,19 +185,29 @@ class AutonomousScheduler {
                 if (hours === 15 && minutes >= 20 && this.dailyScanStates.KR.closing !== todayStr) {
                     await this.executeScan('KR', 'CLOSING', todayStr);
                 }
+
+                // [15:40 ~ 16:00] AFTER MARKET JOURNAL (AI Trading Lab)
+                if (hours === 15 && minutes >= 40 && this.dailyScanStates.KR.journal !== todayStr) {
+                    await this.runAfterMarketJournal();
+                    this.dailyScanStates.KR.journal = todayStr;
+                }
+
+                // [18:00 ~ 19:00] GLOBAL BRIDGE ANALYSIS (KR -> US Correlation)
+                if (hours === 18 && this.dailyScanStates.KR.bridge !== todayStr) {
+                    const { marketCorrelationService } = await import('./MarketCorrelationService');
+                    await marketCorrelationService.runBridgeAnalysis();
+                    this.dailyScanStates.KR.bridge = todayStr;
+                }
             }
 
 
             // [06:00 KST] AI EVOLUTION CHECK (Darwin Engine)
             // Checks health of active strategy and evolves if needed.
             // Changed from 00:00 to 06:00 to avoid US Market hours (Delay Prevention)
-            if (hours === 6 && minutes >= 5 && minutes <= 20 && this.dailyScanStates.KR.closing !== 'EVOL_DONE_' + todayStr) {
+            if (hours === 6 && minutes >= 5 && minutes <= 20 && this.dailyScanStates.KR.evolution !== todayStr) {
                 console.log('[Scheduler] 🧬 Triggering Daily Evolution Check... (Idle Time)');
                 await evolutionScheduler.startDailyRoutine();
-                // Use a dummy state slot or better, add one to the interface. For now hacking into KR.closing
-                // A cleaner way is to add 'evolution' to dailyScanStates.
-                // But for quick integration:
-                this.dailyScanStates.KR.closing = 'EVOL_DONE_' + todayStr;
+                this.dailyScanStates.KR.evolution = todayStr;
             }
 
 
@@ -235,13 +248,14 @@ class AutonomousScheduler {
         }
     }
 
-    private async executeScan(market: MarketTarget, type: 'GAP' | 'MORNING' | 'AFTERNOON' | 'CLOSING', dateKey: string) {
+    private async executeScan(market: MarketTarget, type: 'GAP' | 'MORNING' | 'LUNCH' | 'AFTERNOON' | 'CLOSING', dateKey: string) {
         console.log(`[Scheduler] ⚡ EXECUTING ${market} ${type} SCAN...`);
 
         // Update State FIRST to prevent double-fire during long execution
         if (market === 'KR') {
             if (type === 'GAP') this.dailyScanStates.KR.gap = dateKey;
             if (type === 'MORNING') this.dailyScanStates.KR.morning = dateKey;
+            if (type === 'LUNCH') this.dailyScanStates.KR.lunch = dateKey;
             if (type === 'AFTERNOON') this.dailyScanStates.KR.afternoon = dateKey;
             if (type === 'CLOSING') this.dailyScanStates.KR.closing = dateKey;
         } else {
@@ -268,16 +282,27 @@ class AutonomousScheduler {
                     });
                 }
             }
-            else if (type === 'MORNING' || type === 'AFTERNOON') {
-                const slotTitle = type === 'MORNING' ? '오전 핵심 공략' : '오후장 틈새 공략';
+            else if (type === 'MORNING' || type === 'AFTERNOON' || type === 'LUNCH') {
+                const slotTitle = type === 'MORNING' ? '오전 핵심 공략' : (type === 'LUNCH' ? '점심 수급 점검' : '오후장 틈새 공략');
                 const results = await scanForConviction(market);
 
                 // Calls scanForHunterStrategies with type
                 await this.scanForHunterStrategies(market, type);
 
+                // [NEW] AI Quant Scanner - Runs during MORNING scan only to avoid overload
+                if (type === 'MORNING') {
+                    console.log('[Scheduler] 🤖 Running AI Quant Scanner...');
+                    try {
+                        const { scannerHub } = await import('./discovery/ScannerHubService');
+                        await scannerHub.runAIQuantScan(market);
+                        console.log('[Scheduler] ✅ AI Quant Scanner completed');
+                    } catch (aiError) {
+                        console.error('[Scheduler] AI Quant Scanner failed:', aiError);
+                    }
+                }
+
                 if (results.length > 0) {
                     console.log(`[Scheduler] 🦈 Conviction Scan found ${results.length} candidates.`);
-                    // [Legacy] Predator Analysis removed in Phase 6
                 }
 
                 if (results.length > 0) {
@@ -286,8 +311,29 @@ class AutonomousScheduler {
                         title: `[직투 AI] ⚡/${market} ${slotTitle}: ${top.stockName}`,
                         body: `🎯 **점수:** ${top.score}점\n📌 **이유:** ${top.reasons[0]}`,
                         urgency: 'high',
-                        emoji: '💎'
+                        emoji: type === 'LUNCH' ? '🍛' : '💎'
                     });
+
+                    // [PERSISTENCE] Save Conviction Results to Alpha Playbooks for Hunter to pick up
+                    if (supabase) {
+                        const strategiesToSave = results.map(r => ({
+                            market: market,
+                            ticker: r.ticker,
+                            stock_name: r.stockName,
+                            strategy_name: `Conviction (${type})`,
+                            pattern_name: r.reasons[0] || 'High Conviction',
+                            key_factors: r.reasons,
+                            ai_confidence: r.score >= 2 ? 80 : 60, // Simplified mapping
+                            created_at: new Date().toISOString()
+                        }));
+
+                        await supabase
+                            .from('alpha_engine_playbooks')
+                            .upsert(strategiesToSave as any);
+
+                        console.log(`[Scheduler] 💾 Saved ${results.length} conviction candidates to Playbooks.`);
+                    }
+
                     await autoPilotService.executeSignal({
                         ticker: top.ticker, stockName: top.stockName, type: 'CONVICTION',
                         score: top.score, details: `Conviction (${type}): ${top.reasons.join(', ')}`, currentPrice: 0, changeRate: 0, volume: 0
@@ -321,69 +367,40 @@ class AutonomousScheduler {
         }
     }
 
+    private async runAfterMarketJournal() {
+        console.log('[Scheduler] 🌙 Running After Market Journaling (AI Trading Lab)...');
+        try {
+            if (!supabase) return;
+
+            const today = new Date().toISOString().split('T')[0];
+            const { data: trades } = await supabase
+                .from('ai_trade_journals')
+                .select('*')
+                .gte('created_at', today)
+                .order('created_at', { ascending: false });
+
+            if (!trades || trades.length === 0) {
+                console.log('[Scheduler] No trades today for journaling.');
+                return;
+            }
+
+            const summary = trades.map((t: any) => `- ${t.stock_name} (${t.ticker}): ${t.result_type} [${t.profit_rate}%] - ${t.ai_analysis?.slice(0, 100)}...`).join('\n');
+
+            await telegramService.sendMessage({
+                title: '🌙 [AI 트레이딩 랩] 오늘의 매매 복기 및 일지',
+                body: `오늘 총 ${trades.length}건의 매매가 있었습니다.\n\n### 주요 매매 내역\n${summary}\n\n상세 내용은 [진화] 메뉴의 'AI 트레이딩 랩 & 저널'에서 확인하실 수 있습니다.`,
+                urgency: 'medium',
+                emoji: '📝'
+            });
+
+        } catch (e) {
+            console.error('[Scheduler] After Market Journal failed:', e);
+        }
+    }
+
     /**
      * Monitors active playbooks in the DB and executes trades if entry conditions are met.
      */
-    private async monitorActivePlaybooks(market: MarketTarget) {
-        if (!supabase) return;
-        try {
-            // Fetch active playbooks
-            const { data } = await supabase
-                .from('alpha_engine_playbooks')
-                .select('*')
-                .eq('market', market)
-                .order('created_at', { ascending: false })
-                .limit(10);
-
-            const playbooks = data as any[];
-
-            if (!playbooks || playbooks.length === 0) return;
-
-            console.log(`[Scheduler] Monitoring ${playbooks.length} active playbooks...`);
-
-            /* 
-               CRITICAL: Active Monitoring Logic 
-               Iterate through playbooks and check valid entry conditions
-            */
-            for (const playbook of playbooks) {
-                // Parse Playbook JSON safely
-                const playbookData = typeof playbook.playbook_data === 'string'
-                    ? JSON.parse(playbook.playbook_data)
-                    : playbook.playbook_data;
-
-                if (!playbookData || !playbookData.ticker) continue;
-
-                // 1. Get Current Price (Using AutoPilot's helper if available, or just mocking for now via 'executeSignal' indirect checks)
-                // Since executeSignal does fresh analysis, we can trigger it with a special intent 'PLAYBOOK_MONITORING'
-                // However, doing full analysis every cycle for 10 stocks is expensive (Gemini costs).
-                // Better approach: Check price vs 'pivotPrice' if available in playbook.
-
-                // For now, to satisfy "Try to buy at least", we will trust the playbook's existence implies potential.
-                // We will send a signal to AutoPilot with type 'PLAYBOOK_EXECUTION'.
-                // AutoPilot will check if we already own it. form 'monitorPositions'.
-
-                // Let's rely on AutoPilot's internal duplicate logic.
-                // Triggers with score 75 (lower than Conviction 85, but actionable)
-                const trigger = {
-                    ticker: playbookData.ticker,
-                    stockName: playbookData.stockName,
-                    type: 'PLAYBOOK_EXECUTION',
-                    score: 75, // Reasonable score for a playbook item
-                    details: `Playbook Monitor: ${playbookData.strategyName} - ${playbookData.rationale?.slice(0, 50)}...`,
-                    currentPrice: 0, // Let AutoPilot fetch
-                    changeRate: 0,
-                    volume: 0
-                };
-
-                // Only fire if we haven't fired recently? 
-                // AutoPilot handles duplication (isPositionOpen).
-                await autoPilotService.executeSignal(trigger);
-            }
-
-        } catch (error) {
-            console.error('[Scheduler] monitorActivePlaybooks failed:', error);
-        }
-    }
 
     private async checkMissedClosingBell() {
         console.log('[Scheduler] Checking for missed Closing Bell scans...');
@@ -514,7 +531,7 @@ ${bflSignals.map(s => `
      * [Hunter Mode] 
      * Scans for User-Defined V2 Strategies against the "Neural Network" (User Watchlists + Playbooks)
      */
-    private async scanForHunterStrategies(market: MarketTarget, type: 'GAP' | 'MORNING' | 'AFTERNOON' | 'CLOSING') {
+    private async scanForHunterStrategies(market: MarketTarget, type: 'GAP' | 'MORNING' | 'LUNCH' | 'AFTERNOON' | 'CLOSING') {
         if (!supabase) return;
 
         try {
@@ -552,6 +569,7 @@ ${bflSignals.map(s => `
                 // Scheduler: 'MORNING' | 'AFTERNOON' | 'CLOSING'
                 // Strategy: 'MORNING' | 'AFTERNOON' | 'CLOSING'
                 if (type === 'MORNING' && schedule === 'MORNING') return true;
+                if (type === 'LUNCH' && schedule === 'LUNCH') return true;
                 if (type === 'AFTERNOON' && schedule === 'AFTERNOON') return true;
                 if (type === 'CLOSING' && (schedule === 'CLOSING' || schedule === 'JONGGA')) return true;
 
@@ -564,11 +582,26 @@ ${bflSignals.map(s => `
             if (v2Strategies.length === 0) return;
 
             // 2. Define Scanning Universe (The "Neural Network")
-            // The User explicitly stated: Scan stocks that are "Included/Excluded" (Watchlists) and "Scanned" (Playbooks).
+            // [Comprehensive Monitoring Strategy]
+            // Monitors: 
+            // 1. Virtual Positions (Risk Management)
+            // 2. User Watchlists (My Library)
+            // 3. Alpha Playbooks (High Conviction & Quant Screener Results)
+            // 4. Megatrend Analysis (Long-term Vision)
 
             const targetSet = new Set<string>();
 
-            // Source A: User Watchlists (My Library)
+            // Source 1: Virtual Positions (Must Watch)
+            const { data: positions } = await supabase
+                .from('virtual_positions')
+                .select('ticker');
+            // Note: All positions in virtual_positions are implicitly OPEN
+
+            if (positions) {
+                positions.forEach((p: any) => targetSet.add(p.ticker));
+            }
+
+            // Source 2: User Watchlists
             const { data: watchlists } = await supabase
                 .from('user_watchlists')
                 .select('items')
@@ -576,7 +609,6 @@ ${bflSignals.map(s => `
 
             if (watchlists) {
                 watchlists.forEach((w: any) => {
-                    // Items might be JSONb, need parsing
                     let items = w.items;
                     if (typeof items === 'string') {
                         try { items = JSON.parse(items); } catch (e) { }
@@ -589,7 +621,7 @@ ${bflSignals.map(s => `
                 });
             }
 
-            // Source B: Active Playbooks (AI Picks)
+            // Source 3: Alpha Playbooks (AI Picks - Filter Removed as requested)
             const { data: playbooks } = await supabase
                 .from('alpha_engine_playbooks')
                 .select('ticker')
@@ -601,22 +633,63 @@ ${bflSignals.map(s => `
                 });
             }
 
-            // Fallback: If network is empty, use a minimal sector leader list to keep the heart beating
-            if (targetSet.size === 0) {
-                const leaders = market === 'KR'
-                    ? ['005930', '000660', '035420', '005380', '051910']
-                    : ['AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN'];
-                leaders.forEach(t => targetSet.add(t));
-                console.log('[Hunter] ⚠️ Neural network empty. Using fallback leaders.');
+            // Source 4: Megatrend Analysis
+            try {
+                const { data: megatrends } = await supabase
+                    .from('megatrend_analysis')
+                    .select('trends')
+                    .eq('market_target', market)
+                    .order('analyzed_at', { ascending: false })
+                    .limit(1);
+
+                if (megatrends && megatrends.length > 0) {
+                    const latest = megatrends[0] as any;
+                    let trendsData = latest.trends;
+                    if (typeof trendsData === 'string') {
+                        try { trendsData = JSON.parse(trendsData); } catch (e) { }
+                    }
+                    if (Array.isArray(trendsData)) {
+                        trendsData.forEach((t: any) => {
+                            if (Array.isArray(t.topStocks)) {
+                                t.topStocks.forEach((s: string) => {
+                                    // Extract ticker from "Name(Ticker)" format
+                                    const match = s.match(/\(([A-Z0-9.]+)\)/) || s.match(/^([A-Z0-9.]+)$/);
+                                    if (match && match[1]) targetSet.add(match[1]);
+                                    else targetSet.add(s); // Try adding raw if no match
+                                });
+                            }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn('[Hunter] Failed to load Megatrends:', e);
             }
 
-            console.log(`[Hunter] 🕸️ Neural Network Active: Scanning ${targetSet.size} targets with ${v2Strategies.length} strategies...`);
+            // Fallback: Message only, NO HARDCODED STOCKS
+            if (targetSet.size === 0) {
+                console.log('[Hunter] ⚠️ Neural network empty. Nothing to scan.');
+                return;
+            }
+
+            console.log(`[Hunter] 🕸️ Neural Network Active: Scanning ${targetSet.size} targets (Positions, Watchlists, Playbooks, Megatrends) with ${v2Strategies.length} strategies...`);
 
             // 3. Prepare Engine
             const { StrategyEngine } = await import('./strategy/StrategyEngine');
             const { RealDataProvider } = await import('./strategy/RealDataProvider');
             // FIX: Using dynamic import for dataService to ensure clean loading
             const { fetchDailyCandles } = await import('./dataService');
+
+            // [BOTTOM-UP OVERRIDE] In Bear/Crash markets, force include Inverse ETFs
+            // "Scanner-Driven" means we look for opportunities regardless of the macro regime.
+            const regime = await marketRegimeService.analyzeCurrentRegime(market);
+            if (regime.regime === 'BEAR' || regime.regime === 'PANIC') {
+                console.log(`[Hunter] 🐻 Bear Market Detected (${regime.regime}). Injecting Inverse ETFs for Hedging...`);
+                const inverseTickers = market === 'KR'
+                    ? ['252670', '114800', '251340'] // KODEX 200 Inverse 2X, KODEX Inverse, KOSDAQ 150 Inverse
+                    : ['SQQQ', 'SOXS', 'SPXU']; // ProShares UltraPro Short QQQ, etc.
+
+                inverseTickers.forEach(t => targetSet.add(t));
+            }
 
             const engine = new StrategyEngine();
 
@@ -661,9 +734,9 @@ ${bflSignals.map(s => `
                     const { analyzeDailyLeaderCriteria } = await import('./technicalAnalysis');
                     const leaderAnalysis = analyzeDailyLeaderCriteria(candles);
 
-                    // Require minimum score of 75 (3 out of 4 criteria)
-                    // This filters for stocks with: MACD↑, 20MA↑, +5% intraday, significant volume
-                    if (leaderAnalysis.score < 75) {
+                    // [Learning Mode] Lowered threshold to 20 (was 75)
+                    // Allow more experimental trades for learning
+                    if (leaderAnalysis.score < 20) {
                         console.log(`[Hunter] ⏭️  ${ticker} skipped - Daily Leader score: ${leaderAnalysis.score}/100`);
                         continue;
                     }
@@ -677,7 +750,7 @@ ${bflSignals.map(s => `
                 // Create Provider with real candles
                 const provider = new RealDataProvider(candles);
 
-                for (const strategy of v2Strategies) {
+                for (const strategy of (v2Strategies as any[])) {
                     try {
                         const isMatch = engine.evaluate(strategy.logic_v2, provider);
 
@@ -718,3 +791,22 @@ ${bflSignals.map(s => `
 }
 
 export const autonomousScheduler = new AutonomousScheduler();
+
+// [Entry Point] Start Scheduler if run directly (Node.js only)
+// Protected against Browser execution to prevent "Module url externalized" error
+(async () => {
+    try {
+        if (typeof process !== 'undefined' && process.argv && process.argv[1]) {
+            const { fileURLToPath } = await import('url');
+            if (process.argv[1] === fileURLToPath(import.meta.url)) {
+                await import('dotenv/config'); // Load env vars dynamically
+                autonomousScheduler.start().catch((err: any) => {
+                    console.error('[Scheduler] Fatal Error:', err);
+                    process.exit(1);
+                });
+            }
+        }
+    } catch (e) {
+        // Ignore errors in browser or if url module missing
+    }
+})();

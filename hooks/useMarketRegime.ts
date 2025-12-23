@@ -31,7 +31,7 @@ export const useMarketRegime = (marketTarget: MarketTarget) => {
                 .single();
 
             if (dbError) throw dbError;
-            
+
             // FIX: Cast `data` to `any` to resolve Supabase type inference issue.
             if (data && (data as any).notes) {
                 // FIX: Cast `data` to `any` to access the 'notes' property.
@@ -42,7 +42,7 @@ export const useMarketRegime = (marketTarget: MarketTarget) => {
                         summary: notes.regimeAnalysis.adaptationAdvice || 'No summary available.',
                     });
                 } else {
-                     setRegime({ regime: '불확실', summary: 'AI가 시장 레짐을 판단하지 못했습니다.' });
+                    setRegime({ regime: '불확실', summary: 'AI가 시장 레짐을 판단하지 못했습니다.' });
                 }
             } else {
                 setRegime({ regime: '데이터 없음', summary: '최신 시장 건강 데이터가 없습니다.' });
@@ -59,10 +59,9 @@ export const useMarketRegime = (marketTarget: MarketTarget) => {
     useEffect(() => {
         fetchRegime();
         const intervalId = setInterval(() => {
-            const session = getMarketSessionState(marketTarget);
-            if (session.state === 'REGULAR') {
-                fetchRegime();
-            }
+            // Update every 5 minutes regardless of market session
+            // This ensures we show the latest data even after market close
+            fetchRegime();
         }, REFRESH_INTERVAL_MINUTES * 60 * 1000);
 
         return () => clearInterval(intervalId);

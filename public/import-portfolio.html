@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>직투 포트폴리오 임포트</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        .info {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 직투 실제 포트폴리오 임포트</h1>
+        
+        <div class="info">
+            <h3>📊 임포트될 포트폴리오:</h3>
+            <p><strong>한국 주식 (KR):</strong> 6종목, 15,238,265원</p>
+            <ul>
+                <li>지엔씨에너지 (85주)</li>
+                <li>한미반도체 (5주)</li>
+                <li>NAVER (24주)</li>
+                <li>SK하이닉스 (5주)</li>
+                <li>삼양식품 (3주)</li>
+                <li>펩트론 (5주)</li>
+            </ul>
+            
+            <p><strong>미국 주식 (US):</strong> 7종목, $76.41</p>
+            <ul>
+                <li>테라다인 (7주)</li>
+                <li>비트마인 (31주)</li>
+                <li>아이렌 (17주)</li>
+                <li>넷플릭스 (5주)</li>
+                <li>인텔 (7주)</li>
+                <li>노보노디스크 (6주)</li>
+                <li>비스트라 에너지 (3주)</li>
+            </ul>
+        </div>
+
+        <button onclick="importPortfolio()">✨ 포트폴리오 임포트 시작</button>
+
+        <div class="success" id="success">
+            <h3>✅ 임포트 완료!</h3>
+            <p>페이지를 새로고침하면 실제 포트폴리오가 표시됩니다.</p>
+            <button onclick="window.location.href='http://localhost:3000'">직투로 이동</button>
+        </div>
+    </div>
+
+    <script>
+        function importPortfolio() {
+            console.log('🚀 실제 포트폴리오 임포트 시작...');
+
+            const krPortfolio = [
+                { ticker: '082850', stockName: '지엔씨에너지', shares: 85, avgPrice: 31044, currentPrice: 31044 },
+                { ticker: '042700', stockName: '한미반도체', shares: 5, avgPrice: 121200, currentPrice: 116190 },
+                { ticker: '035420', stockName: 'NAVER', shares: 24, avgPrice: 246760, currentPrice: 235594 },
+                { ticker: '000660', stockName: 'SK하이닉스', shares: 5, avgPrice: 586111, currentPrice: 546016 },
+                { ticker: '003230', stockName: '삼양식품', shares: 3, avgPrice: 1345000, currentPrice: 1250737 },
+                { ticker: '087010', stockName: '펩트론', shares: 5, avgPrice: 278042, currentPrice: 244060 }
+            ];
+
+            const usPortfolio = [
+                { ticker: 'TER', stockName: '테라다인', shares: 7, avgPrice: 175.23, currentPrice: 194.81 },
+                { ticker: 'BTIM', stockName: '비트마인 이머션 테크놀로지스', shares: 31, avgPrice: 29.79, currentPrice: 31.30 },
+                { ticker: 'AIRN', stockName: '아이렌', shares: 17, avgPrice: 38.80, currentPrice: 39.84 },
+                { ticker: 'NFLX', stockName: '넷플릭스', shares: 5, avgPrice: 96.69, currentPrice: 94.20 },
+                { ticker: 'INTC', stockName: '인텔', shares: 7, avgPrice: 39.87, currentPrice: 36.75 },
+                { ticker: 'NVO', stockName: '노보노디스크(ADR)', shares: 6, avgPrice: 52.30, currentPrice: 47.99 },
+                { ticker: 'VTLE', stockName: '비스트라 에너지', shares: 3, avgPrice: 183.97, currentPrice: 162.69 }
+            ];
+
+            localStorage.setItem('jiktoo_portfolio_KR', JSON.stringify(krPortfolio));
+            localStorage.setItem('jiktoo_portfolio_US', JSON.stringify(usPortfolio));
+            localStorage.setItem('jiktoo_portfolio_cash_KR', '15238265');
+            localStorage.setItem('jiktoo_portfolio_cash_US', '76.41');
+
+            console.log('✅ 포트폴리오 임포트 완료!');
+            console.log('📊 KR: 6종목, 15,238,265원');
+            console.log('📊 US: 7종목, $76.41');
+
+            document.getElementById('success').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

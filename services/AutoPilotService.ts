@@ -112,7 +112,7 @@ class AutoPilotService {
 
     private async processUserBriefings() {
         try {
-            const { intelligenceBriefingProcessor } = await import('./IntelligenceBriefingProcessor');
+            const { intelligenceBriefingProcessor } = await import('./IntelligenceBriefingProcessorV2');
             await intelligenceBriefingProcessor.processAllPending();
         } catch (error) {
             console.error('[AutoPilot] Failed to process user briefings:', error);
@@ -441,7 +441,8 @@ class AutoPilotService {
                             const integrity = await deepResearchService.verifyNewsIntegrity(ticker, msg.message, sentiment, this.marketTarget);
 
                             if (integrity.isManipulation) {
-                                console.warn(`[AutoPilot] ⚠️ Discarding News for ${ticker}: ${integrity.insight}`);
+                                // Silent filtering - only log in debug mode
+                                // console.log(`[AutoPilot] 🔍 Filtered: ${ticker} (${integrity.insight})`);
                                 continue; // Skip adding this to headlines
                             } else {
                                 // Append verifiable connection
@@ -479,7 +480,7 @@ class AutoPilotService {
             await this.logThought({
                 action: 'ANALYSIS',
                 message: `[Commander] ${decision.rationale}`,
-                confidence: 85,
+                confidence: 70, // Baseline confidence for action
                 details: decision,
                 strategy: 'AI_COMMAND'
             });

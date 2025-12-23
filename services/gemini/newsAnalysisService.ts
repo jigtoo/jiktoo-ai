@@ -1,4 +1,4 @@
-// services/gemini/newsAnalysisService.ts
+﻿// services/gemini/newsAnalysisService.ts
 import { generateContentWithRetry } from './client';
 import { SchemaType } from '@google/generative-ai';
 

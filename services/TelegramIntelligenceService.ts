@@ -1,315 +1,112 @@
-import { generateContentWithRetry } from './gemini/client';
-import { sanitizeJsonString } from './utils/jsonUtils';
-import { marketRegimeService } from './MarketRegimeService';
-import { supabase } from './supabaseClient';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import { gem1_Reliability, ReliabilityResult } from './gems/Gem1_Reliability';
+import { gem2_ValueChain, ValueChainResult } from './gems/Gem2_ValueChain';
 
-interface IntelligenceImpact {
-    sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'CAUTION';
-    urgency: 'HIGH' | 'MEDIUM' | 'LOW';
-    confidenceScore: number;
-    relatedTickers: string[];
-    actionable: boolean;
-    reasoning: string;
-    suggestedAction?: 'BUY' | 'SELL' | 'WATCH' | 'AVOID';
+// Define the signal structure expected by AutoPilot
+interface ExternalSignal {
+    ticker: string;
+    stockName: string;
+    score: number; // Reliability Score 0-30 -> mapped to confidence
+    details: string;
+    source: string;
+    timestamp: number;
+    metadata: any;
+    reliability: ReliabilityResult;
+    valueChain?: ValueChainResult;
 }
 
-class TelegramIntelligenceService {
-    private channel: RealtimeChannel | null = null;
-    private processedMessages: Set<string> = new Set(); // [NEW] Track processed message IDs
-    private readonly MAX_PROCESSED_CACHE = 1000; // Prevent memory leak
+type SignalHandler = (signal: ExternalSignal) => Promise<void>;
 
-    // We attach the autopilot handler dynamically to avoid circular dependency issues during initialization
-    private signalHandler: ((insight: any, sourceData: any) => Promise<void>) | null = null;
+export class TelegramIntelligenceService {
+    private signalHandler: SignalHandler | null = null;
 
-    constructor() {
-        this.startSubscription();
-        this.processRecentMessages(); // [NEW] Process recent messages on startup
-    }
-
-    public setSignalHandler(handler: (insight: any, sourceData: any) => Promise<void>) {
+    /**
+     * Registers the callback for processed signals (AutoPilot binds here)
+     */
+    public setSignalHandler(handler: SignalHandler) {
         this.signalHandler = handler;
-    }
-
-    private startSubscription() {
-        console.log('[TelegramIntel] Starting Supabase Realtime Subscription...');
-
-        // Listen to INSERT on telegram_messages
-        if (!supabase) {
-            console.error('[TelegramIntel] Supabase client not initialized');
-            return;
-        }
-
-        // [NEW] Log for debugging
-        console.log('[TelegramIntel] Ready to receive signals.');
-
-        this.channel = supabase
-            .channel('telegram-intelligence')
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'telegram_messages' },
-                async (payload: any) => {
-                    console.log(`[TelegramIntel] ?“© New Message detected: ${payload.new.id} from ${payload.new.channel}`);
-                    console.log(`[TelegramIntel] Content preview: ${payload.new.message?.substring(0, 50)}...`);
-
-                    const msg = {
-                        id: payload.new.id,
-                        channel: payload.new.channel || 'Unknown',
-                        message: payload.new.message,
-                        created_at: payload.new.created_at
-                    };
-                    await this.handleNewMessage(msg);
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'telegram_urls' },
-                async (payload) => {
-                    // Check if title/content was just populated
-                    const newData = payload.new;
-                    const oldData = payload.old;
-
-                    if (newData.title && !oldData.title) {
-                        console.log('[TelegramIntel] ?”— Link Expanded detected:', newData.url);
-                        await this.handleExpandedLink(newData);
-                    }
-                }
-            )
-            .subscribe((status) => {
-                console.log(`[TelegramIntel] Subscription status: ${status}`);
-                if (status === 'SUBSCRIBED') {
-                    console.log('[TelegramIntel] ??Realtime subscription active. Waiting for NEW messages...');
-                }
-            });
+        console.log('[TelegramIntelligence] Signal Handler attached.');
     }
 
     /**
-     * [NEW] Process recent messages that may have been inserted before subscription was active
-     * This catches up on messages that were collected while app was offline
+     * Entry point for Telegram/Collector news.
+     * @param text The raw message text
+     * @param metadata Source metadata (channel name, time, etc.)
      */
-    private async processRecentMessages() {
-        if (!supabase) {
-            console.warn('[TelegramIntel] Cannot backfill - Supabase not available');
+    public async processMessage(text: string, metadata: any = {}) {
+        console.log(`[TelegramIntelligence] ðŸ“¨ Processing message...`);
+
+        // 1. Gem 1: Reliability Filter (The Funnel)
+        const reliability = await gem1_Reliability.evaluate(text);
+
+        if (!reliability.isPass) {
+            console.log(`[Gem 1] ðŸ›‘ Filtered: Score ${reliability.score}/30 - ${reliability.warning}`);
             return;
         }
 
-        try {
-            console.log('[TelegramIntel] ?”„ Checking for recent unprocessed messages...');
+        console.log(`[Gem 1] âœ… Passed: Score ${reliability.score}/30. Entities: ${JSON.stringify(reliability.entities)}`);
 
-            // Fetch messages from last 15 minutes that haven't been analyzed yet (REDUCED TO SAVE TOKENS)
-            const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        // 2. Gem 2: Value Chain Analysis (Context Enriched)
+        // Only run if score is relatively high (e.g. > 18) to save tokens, or for all passed items?
+        // Let's run for all passed items to get 'relatedStocks'
+        const valueChain = await gem2_ValueChain.analyze(text);
+        console.log(`[Gem 2] ðŸ”— Value Chain: ${valueChain.theme} (${valueChain.directImpact.sentiment})`);
 
-            const { data: recentMessages, error } = await supabase
-                .from('telegram_messages')
-                .select('id, channel, message, created_at')
-                .gte('created_at', fifteenMinutesAgo)
-                .neq('channel', 'SYSTEM')
-                .order('created_at', { ascending: true })
-                .limit(5); // REDUCED from 20 to 5
+        // Combine Gem 1 entities with Gem 2 related stocks
+        // Prioritize Gem 2 related stocks if they have tickers
+        const allEntities: { ticker: string; name: string; reason?: string }[] = [];
 
-            if (error) {
-                console.error('[TelegramIntel] Failed to fetch recent messages:', error);
-                return;
-            }
-
-            if (!recentMessages || recentMessages.length === 0) {
-                console.log('[TelegramIntel] ??No recent messages to process');
-                return;
-            }
-
-            console.log(`[TelegramIntel] ?“¦ Found ${recentMessages.length} recent messages (last 15min). Processing...`);
-
-            // Process each message with delay to avoid rate limits
-            for (const msg of recentMessages) {
-                await this.handleNewMessage(msg);
-                // Increased delay to further reduce API pressure
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-
-            console.log('[TelegramIntel] ??Backfill complete');
-
-        } catch (error) {
-            console.error('[TelegramIntel] Backfill error:', error);
-        }
-    }
-
-    private async handleNewMessage(msg: any) {
-        console.log(`[TelegramIntel] ?“© Processing polled message: ${msg.id} from ${msg.channel}`);
-
-        // [CRITICAL FIX] Deduplication - prevents re-analyzing old messages
-        if (this.processedMessages.has(msg.id)) {
-            console.log(`[TelegramIntel] ??¸ Skipping already processed message ${msg.id}`);
-            return;
-        }
-
-        // [DEBUG] Log message structure
-        console.log(`[TelegramIntel] ?” Message ${msg.id} details:`, {
-            hasMessage: !!msg.message,
-            length: msg.message?.length || 0,
-            preview: msg.message?.substring(0, 50) || '(empty)'
+        // Add Gem 1 primary entities
+        reliability.entities?.forEach(e => {
+            if (e.ticker) allEntities.push({ ticker: e.ticker, name: e.name, reason: 'Primary Subject' });
         });
 
-        // [FIX] Skip SYSTEM messages - they're just collector status updates
-        if (msg.channel === 'SYSTEM' || msg.channel?.includes('t.me/SYSTEM')) {
-            console.log(`[TelegramIntel] ??¸ Skipping SYSTEM message ${msg.id}`);
-            return;
-        }
-
-        // Only skip completely empty messages
-        if (!msg.message || msg.message.trim().length === 0) {
-            console.log(`[TelegramIntel] ? ï¸ Skipping empty message ${msg.id}`);
-            return;
-        }
-
-        // Mark as processed BEFORE analysis to prevent duplicate processing
-        this.processedMessages.add(msg.id);
-
-        // Clean cache if too large
-        if (this.processedMessages.size > this.MAX_PROCESSED_CACHE) {
-            const toDelete = Array.from(this.processedMessages).slice(0, 500);
-            toDelete.forEach(id => this.processedMessages.delete(id));
-            console.log('[TelegramIntel] ?§¹ Cleaned message cache');
-        }
-
-        try {
-            console.log(`[TelegramIntel] ?? Initiating AI analysis for message ${msg.id}...`);
-            await this.analyzeContent({
-                type: 'MESSAGE',
-                title: `Telegram Signal (${msg.channel || 'Unknown'})`,
-                description: msg.message.substring(0, 100),
-                content: msg.message,
-                originalUrl: null
-            });
-        } catch (error) {
-            console.error(`[TelegramIntel] ??Analysis failed for message ${msg.id}:`, error);
-        }
-    }
-
-    private async handleExpandedLink(urlData: any) {
-        await this.analyzeContent({
-            type: 'ARTICLE',
-            title: urlData.title,
-            description: urlData.title, // URL often has no separate desc in DB
-            content: `[Title] ${urlData.title}\n[URL] ${urlData.url}`, // Content body might not be completely in DB yet depending on crawler schema
-            originalUrl: urlData.url
+        // Add Gem 2 related stocks (Impacted stocks)
+        valueChain.relatedStocks?.forEach(s => {
+            if (s.ticker) {
+                // Check dupes
+                if (!allEntities.find(e => e.ticker === s.ticker)) {
+                    allEntities.push({ ticker: s.ticker, name: s.name, reason: `Value Chain: ${s.relationship} (${s.reason})` });
+                }
+            }
         });
-    }
 
-    private async analyzeContent(data: { type: string, title: string; description: string; content: string; originalUrl: string | null }) {
-        if (!this.signalHandler) {
-            console.warn('[TelegramIntel] ? ï¸ No signal handler attached. Skipping analysis.');
-            return;
-        }
+        // Emit Signals for ALL impacted entities
+        if (allEntities.length > 0) {
+            for (const entity of allEntities) {
 
-        console.log(`[TelegramIntel] ?§  Analyzing ${data.type}: ${data.title}`);
+                // Adjust score based on relationship?
+                // Direct = High Confidence, Indirect = Slightly Lower?
+                let confidence = Math.min(reliability.score * 3.33, 99);
+                if (entity.reason?.includes('Value Chain')) {
+                    confidence *= 0.9; // Slight discount for 2nd order
+                }
 
-        const currentRegime = marketRegimeService.getLastStatus('KR')?.regime || 'SIDEWAYS';
-
-        // Log analysis start
-        if (supabase) {
-            const { error } = await supabase.from('ai_thought_logs').insert({
-                action: 'ANALYSIS',
-                market: 'KR',
-                ticker: 'PENDING',
-                message: `[Intel] Analyzing: ${data.title}...`,
-                confidence: 50,
-                strategy: 'CONTENT_ANALYSIS',
-                created_at: new Date().toISOString()
-            } as any);
-
-            if (error) {
-                console.error('[TelegramIntel] ??DB INSERT failed (check RLS):', error);
-                return; // Don't proceed if DB is inaccessible
-            }
-        }
-
-        const prompt = `
-        You are a highly sophisticated Financial Intelligence AI.
-        Your task is to analyze the following market intelligence derived from a professional telegram channel.
-        
-        Current Market Regime: ${currentRegime}
-        
-        Type: ${data.type}
-        Title: ${data.title}
-        Content:
-        ${data.content.substring(0, 3000)} ... (truncated)
-        
-        Determine if this information provides a SPECIFIC, ACTIONABLE trading signal or crucial market insight.
-        
-        Respond ONLY in valid JSON format:
-        {
-            "sentiment": "BULLISH" | "BEARISH" | "NEUTRAL" | "CAUTION",
-            "urgency": "HIGH" | "MEDIUM" | "LOW",
-            "confidenceScore": number (0-100),
-            "relatedTickers": ["Array of tickers. KR: 6 digits (e.g., '005930'), US: 1-5 letters (e.g., 'TSLA'). DO NOT include dates or company names."],
-            "actionable": boolean,
-            "reasoning": "Concise explanation in Korean",
-            "suggestedAction": "BUY" | "SELL" | "WATCH" | "AVOID"
-        }
-        `;
-
-        try {
-            const aiResponse = await generateContentWithRetry({
-                model: 'gemini-1.5-flash',
-                contents: prompt,
-                // config: { responseMimeType: 'application/json' }
-            });
-
-            const rawText = aiResponse.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-            const analysis: IntelligenceImpact = JSON.parse(sanitizeJsonString(rawText));
-
-            // FILTER: Remove distinctively invalid tickers (e.g., 4-digit numbers like JP stocks or years)
-            if (analysis.relatedTickers && Array.isArray(analysis.relatedTickers)) {
-                analysis.relatedTickers = analysis.relatedTickers.filter(t => {
-                    // Allow KR (6 digits) and US (letters)
-                    const isKR = /^\d{6}$/.test(t);
-                    const isUS = /^[A-Za-z]{1,5}$/.test(t);
-                    // Explicitly block 4-digit numbers (likely JP stocks or years)
-                    const isJP = /^\d{4}$/.test(t);
-                    return (isKR || isUS) && !isJP;
-                });
-            }
-
-            console.log(`[TelegramIntel] AI Analysis Result: ${analysis.sentiment} (Score: ${analysis.confidenceScore})`);
-
-            // [FIX] Log SUCCESS to ai_thought_logs
-            if (supabase) {
-                supabase.from('ai_thought_logs').insert({
-                    action: 'ANALYSIS',
-                    market: 'KR', // Default
-                    ticker: analysis.relatedTickers?.[0] || 'GENERAL',
-                    message: `[Intel] ë¶„ì„ ?„ë£Œ: ${data.title} -> ${analysis.sentiment} (${analysis.reasoning})`,
-                    confidence: analysis.confidenceScore,
-                    strategy: 'CONTENT_ANALYSIS',
-                    details: {
-                        source_title: data.title,
-                        source_desc: data.description,
-                        analysis_result: analysis
+                const signal: ExternalSignal = {
+                    ticker: entity.ticker,
+                    stockName: entity.name,
+                    score: Math.floor(confidence),
+                    details: `[Gem 2 Analysis] ${valueChain.directImpact.description}`,
+                    source: 'Telegram_Gems',
+                    timestamp: Date.now(),
+                    metadata: {
+                        ...metadata,
+                        theme: valueChain.theme,
+                        keywords: valueChain.keywords,
+                        reason: entity.reason
                     },
-                    created_at: new Date().toISOString()
-                } as any).then(({ error }) => {
-                    if (error) console.error('[TelegramIntel] Failed to log thought:', error);
-                });
-            }
+                    reliability,
+                    valueChain // Pass full analysis
+                };
 
-            if (analysis.actionable) {
-                await this.signalHandler(analysis, data);
+                // Emit to AutoPilot
+                if (this.signalHandler) {
+                    await this.signalHandler(signal);
+                } else {
+                    console.warn('[TelegramIntelligence] No Handler attached! Signal dropped.');
+                }
             }
-
-        } catch (error: any) {
-            console.error('[TelegramIntel] AI Analysis Failed:', error);
-            // [FIX] Log FAILURE to ai_thought_logs
-            if (supabase) {
-                supabase.from('ai_thought_logs').insert({
-                    action: 'ERROR',
-                    market: 'KR',
-                    ticker: 'ERROR',
-                    message: `[Intel] AI ë¶„ì„ ?¤íŒ¨: ${error.message || 'Unknown Error'}`,
-                    confidence: 0,
-                    strategy: 'CONTENT_ANALYSIS',
-                    created_at: new Date().toISOString()
-                } as any).then(() => { });
-            }
+        } else {
+            console.warn('[Gem 1+2] Passed analysis but no clickable tickers found.');
         }
     }
 }

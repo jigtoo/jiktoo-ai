@@ -1,4 +1,4 @@
-// services/gemini/stockService.ts
+ï»¿// services/gemini/stockService.ts
 import { Type } from "@google/genai";
 import type { AnalysisResult, MarketTarget, PsychoanalystAnalysis, StrategistAnalysis, Synthesis, CoinStockSignal, StockDossier, BuyPlan } from '../../types';
 import { ai, AI_DISABLED_ERROR_MESSAGE, generateContentWithRetry } from './client';
@@ -113,7 +113,7 @@ const psychologyAnalysisSchema = {
         mediaThermometer: {
             type: Type.OBJECT,
             properties: {
-                level: { type: Type.STRING, enum: ['³Ã¿Â', '¹Ì¿ÂÀû', '°ü½É', '°ú¿­', '±¤¶õ ºĞÀ§±â'] },
+                level: { type: Type.STRING, enum: ['ëƒ‰ì˜¨', 'ë¯¸ì˜¨ì ', 'ê´€ì‹¬', 'ê³¼ì—´', 'ê´‘ë€ ë¶„ìœ„ê¸°'] },
                 reason: { type: Type.STRING }
             },
             required: ['level', 'reason']
@@ -128,7 +128,7 @@ const catalystAnalysisSchema = {
     type: Type.OBJECT,
     properties: {
         narrativeSummary: { type: Type.STRING },
-        narrativeSentiment: { type: Type.STRING, enum: ['±àÁ¤Àû', 'Áß¸³', 'ºÎÁ¤Àû'] },
+        narrativeSentiment: { type: Type.STRING, enum: ['ê¸ì •ì ', 'ì¤‘ë¦½', 'ë¶€ì •ì '] },
         catalysts: {
             type: Type.ARRAY,
             items: {
@@ -182,7 +182,7 @@ const realTimeNewsItemSchema = {
         source: { type: Type.STRING },
         url: { type: Type.STRING },
         publishedTime: { type: Type.STRING },
-        sentiment: { type: Type.STRING, enum: ['±àÁ¤Àû', 'Áß¸³', 'ºÎÁ¤Àû'] }
+        sentiment: { type: Type.STRING, enum: ['ê¸ì •ì ', 'ì¤‘ë¦½', 'ë¶€ì •ì '] }
     },
     required: ['headline', 'source', 'url', 'publishedTime', 'sentiment']
 };
@@ -191,8 +191,8 @@ const brandPowerAnalysisSchema = {
     type: Type.OBJECT,
     properties: {
         summary: { type: Type.STRING },
-        consumerTrendAlignment: { type: Type.STRING, enum: ['¼±µµ', 'µ¿Çà', 'ºÎÁø'] },
-        onlineBuzz: { type: Type.STRING, enum: ['¸Å¿ì ±àÁ¤Àû', '±àÁ¤Àû', 'Áß¸³', 'ºÎÁ¤Àû'] }
+        consumerTrendAlignment: { type: Type.STRING, enum: ['ì„ ë„', 'ë™í–‰', 'ë¶€ì§„'] },
+        onlineBuzz: { type: Type.STRING, enum: ['ë§¤ìš° ê¸ì •ì ', 'ê¸ì •ì ', 'ì¤‘ë¦½', 'ë¶€ì •ì '] }
     },
     required: ['summary', 'consumerTrendAlignment', 'onlineBuzz'],
     nullable: true
@@ -246,15 +246,15 @@ const fundamentalAnalysisSchema = {
 
 const vcpAnalysisSchema = { type: Type.OBJECT, properties: { analysisText: { type: Type.STRING }, pivotPoint: { type: Type.NUMBER, nullable: true }, priceData: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { date: { type: Type.STRING }, price: { type: Type.NUMBER } }, required: ['date', 'price'] } }, contractions: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { endDate: { type: Type.STRING }, contraction: { type: Type.STRING } }, required: ['endDate', 'contraction'] } } }, required: ['analysisText', 'pivotPoint', 'priceData', 'contractions'] };
 
-const candlestickAnalysisSchema = { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, patterns: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { patternName: { type: Type.STRING }, interpretation: { type: Type.STRING }, location: { type: Type.STRING }, reliability: { type: Type.STRING, enum: ['³ôÀ½', 'Áß°£', '³·À½'] } }, required: ['patternName', 'interpretation', 'location', 'reliability'] } } }, required: ['summary', 'patterns'], nullable: true };
+const candlestickAnalysisSchema = { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, patterns: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { patternName: { type: Type.STRING }, interpretation: { type: Type.STRING }, location: { type: Type.STRING }, reliability: { type: Type.STRING, enum: ['ë†’ìŒ', 'ì¤‘ê°„', 'ë‚®ìŒ'] } }, required: ['patternName', 'interpretation', 'location', 'reliability'] } } }, required: ['summary', 'patterns'], nullable: true };
 
-const whaleTrackerAnalysisSchema = { type: Type.OBJECT, properties: { averageCost: { type: Type.NUMBER }, deviationPercent: { type: Type.NUMBER }, phase: { type: Type.STRING, enum: ['¸ÅÁı', 'ºĞ»ê', 'Áß¸³'] }, accumulationType: { type: Type.STRING, enum: ['±â°ü ÁÖµµÇü', '¿Ü±¹°èÆİµå ¸ÅÁıÇü', 'È¥ÇÕÇü'], nullable: true }, phaseEvidence: { type: Type.STRING }, signals: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: ['¸Å¼ö ½ÅÈ£', '¸Åµµ ½ÅÈ£', '´Ü±â °ú¿­ °æ°í', 'ÀúÆò°¡ ±âÈ¸'] }, description: { type: Type.STRING }, date: { type: Type.STRING }, price: { type: Type.NUMBER } }, required: ['type', 'description', 'date', 'price'] } }, summary: { type: Type.STRING } }, required: ['averageCost', 'deviationPercent', 'phase', 'phaseEvidence', 'signals', 'summary'] };
+const whaleTrackerAnalysisSchema = { type: Type.OBJECT, properties: { averageCost: { type: Type.NUMBER }, deviationPercent: { type: Type.NUMBER }, phase: { type: Type.STRING, enum: ['ë§¤ì§‘', 'ë¶„ì‚°', 'ì¤‘ë¦½'] }, accumulationType: { type: Type.STRING, enum: ['ê¸°ê´€ ì£¼ë„í˜•', 'ì™¸êµ­ê³„í€ë“œ ë§¤ì§‘í˜•', 'í˜¼í•©í˜•'], nullable: true }, phaseEvidence: { type: Type.STRING }, signals: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { type: { type: Type.STRING, enum: ['ë§¤ìˆ˜ ì‹ í˜¸', 'ë§¤ë„ ì‹ í˜¸', 'ë‹¨ê¸° ê³¼ì—´ ê²½ê³ ', 'ì €í‰ê°€ ê¸°íšŒ'] }, description: { type: Type.STRING }, date: { type: Type.STRING }, price: { type: Type.NUMBER } }, required: ['type', 'description', 'date', 'price'] } }, summary: { type: Type.STRING } }, required: ['averageCost', 'deviationPercent', 'phase', 'phaseEvidence', 'signals', 'summary'] };
 
 const tradingPlaybookAnalysisSchema = { type: Type.OBJECT, properties: { appliedStrategy: { type: Type.STRING }, keyPattern: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, status: { type: Type.STRING } }, required: ['name', 'status'] }, signalStrength: { type: Type.NUMBER }, confirmationSignals: { type: Type.ARRAY, items: { type: Type.STRING } }, expertAlignment: { type: Type.STRING }, summary: { type: Type.STRING } }, required: ['appliedStrategy', 'keyPattern', 'signalStrength', 'confirmationSignals', 'expertAlignment', 'summary'] };
 
 const ichimokuAnalysisSchema = { type: Type.OBJECT, properties: { summary: { type: Type.STRING }, trendHealthScore: { type: Type.NUMBER }, currentState: { type: Type.OBJECT, properties: { trend: { type: Type.STRING }, momentum: { type: Type.STRING }, resistance: { type: Type.STRING }, }, required: ['trend', 'momentum', 'resistance'] }, futureForecast: { type: Type.OBJECT, properties: { supportResistance: { type: Type.STRING }, trendChangeWarning: { type: Type.STRING }, }, required: ['supportResistance', 'trendChangeWarning'] } }, required: ['summary', 'trendHealthScore', 'currentState', 'futureForecast'] };
 
-const keyIndicatorAnalysisSchema = { type: Type.OBJECT, properties: { rsi: { type: Type.OBJECT, properties: { value: { type: Type.NUMBER }, interpretation: { type: Type.STRING, enum: ['°ú¸Åµµ', '°ú¸Å¼ö', 'Áß¸³'] } }, required: ['value', 'interpretation'] }, movingAverages: { type: Type.OBJECT, properties: { shortTerm: { type: Type.OBJECT, properties: { period: { type: Type.NUMBER }, value: { type: Type.NUMBER }, trend: { type: Type.STRING, enum: ['»ó½Â', 'ÇÏ¶ô', 'È¾º¸'] } }, required: ['period', 'value', 'trend'] }, mediumTerm: { type: Type.OBJECT, properties: { period: { type: Type.NUMBER }, value: { type: Type.NUMBER }, trend: { type: Type.STRING, enum: ['»ó½Â', 'ÇÏ¶ô', 'È¾º¸'] } }, required: ['period', 'value', 'trend'] }, longTerm: { type: Type.OBJECT, properties: { period: { type: Type.NUMBER }, value: { type: Type.NUMBER }, trend: { type: Type.STRING, enum: ['»ó½Â', 'ÇÏ¶ô', 'È¾º¸'] } }, required: ['period', 'value', 'trend'] }, summary: { type: Type.STRING } }, required: ['shortTerm', 'mediumTerm', 'longTerm', 'summary'] }, volumeAnalysis: { type: Type.OBJECT, properties: { recentVolumeVsAverage: { type: Type.STRING }, interpretation: { type: Type.STRING } }, required: ['recentVolumeVsAverage', 'interpretation'] }, vwap: { type: Type.OBJECT, properties: { value: { type: Type.NUMBER }, pricePosition: { type: Type.STRING, enum: ['»óÈ¸', 'ÇÏÈ¸', '±ÙÁ¢'] }, interpretation: { type: Type.STRING } }, required: ['value', 'pricePosition', 'interpretation'] } }, required: ['rsi', 'movingAverages', 'volumeAnalysis', 'vwap'] };
+const keyIndicatorAnalysisSchema = { type: Type.OBJECT, properties: { rsi: { type: Type.OBJECT, properties: { value: { type: Type.NUMBER }, interpretation: { type: Type.STRING, enum: ['ê³¼ë§¤ë„', 'ê³¼ë§¤ìˆ˜', 'ì¤‘ë¦½'] } }, required: ['value', 'interpretation'] }, movingAverages: { type: Type.OBJECT, properties: { shortTerm: { type: Type.OBJECT, properties: { period: { type: Type.NUMBER }, value: { type: Type.NUMBER }, trend: { type: Type.STRING, enum: ['ìƒìŠ¹', 'í•˜ë½', 'íš¡ë³´'] } }, required: ['period', 'value', 'trend'] }, mediumTerm: { type: Type.OBJECT, properties: { period: { type: Type.NUMBER }, value: { type: Type.NUMBER }, trend: { type: Type.STRING, enum: ['ìƒìŠ¹', 'í•˜ë½', 'íš¡ë³´'] } }, required: ['period', 'value', 'trend'] }, longTerm: { type: Type.OBJECT, properties: { period: { type: Type.NUMBER }, value: { type: Type.NUMBER }, trend: { type: Type.STRING, enum: ['ìƒìŠ¹', 'í•˜ë½', 'íš¡ë³´'] } }, required: ['period', 'value', 'trend'] }, summary: { type: Type.STRING } }, required: ['shortTerm', 'mediumTerm', 'longTerm', 'summary'] }, volumeAnalysis: { type: Type.OBJECT, properties: { recentVolumeVsAverage: { type: Type.STRING }, interpretation: { type: Type.STRING } }, required: ['recentVolumeVsAverage', 'interpretation'] }, vwap: { type: Type.OBJECT, properties: { value: { type: Type.NUMBER }, pricePosition: { type: Type.STRING, enum: ['ìƒíšŒ', 'í•˜íšŒ', 'ê·¼ì ‘'] }, interpretation: { type: Type.STRING } }, required: ['value', 'pricePosition', 'interpretation'] } }, required: ['rsi', 'movingAverages', 'volumeAnalysis', 'vwap'] };
 
 const technicalAnalysisSchema = { type: Type.OBJECT, properties: { pivotPoint: { type: Type.STRING }, currentTrend: { type: Type.STRING }, vcpAnalysis: vcpAnalysisSchema, candlestickAnalysis: candlestickAnalysisSchema, whaleTrackerAnalysis: whaleTrackerAnalysisSchema, tradingPlaybookAnalysis: tradingPlaybookAnalysisSchema, ichimokuAnalysis: ichimokuAnalysisSchema, keyIndicators: keyIndicatorAnalysisSchema }, required: ['pivotPoint', 'currentTrend', 'vcpAnalysis', 'whaleTrackerAnalysis', 'tradingPlaybookAnalysis', 'ichimokuAnalysis', 'keyIndicators'] };
 
@@ -280,9 +280,9 @@ const synthesisSchema = { type: Type.OBJECT, properties: { finalVerdict: { type:
 
 const stockBehaviorProfileSchema = { type: Type.OBJECT, properties: { profileSummary: { type: Type.STRING }, keyLevels: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { level: { type: Type.STRING }, description: { type: Type.STRING } }, required: ['level', 'description'] } }, majorSignals: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { signal: { type: Type.STRING }, interpretation: { type: Type.STRING } }, required: ['signal', 'interpretation'] } }, volatility: { type: Type.OBJECT, properties: { atrPercent: { type: Type.NUMBER }, analysis: { type: Type.STRING } }, required: ['atrPercent', 'analysis'] }, tradingStrategy: { type: Type.STRING } }, required: ['profileSummary', 'keyLevels', 'majorSignals', 'volatility', 'tradingStrategy'] };
 
-const tradingPlaybookSchema = { type: Type.OBJECT, properties: { strategyName: { type: Type.STRING, enum: ['´ÜÅ¸', 'Ãß¼¼¸Å¸Å (¹Ú½º±Ç µ¹ÆÄ)', 'Å¸ÀÌ¹Ö ¸Å¼ö', '¹Ú½º±Ç°Å·¡', '±âÅ¸'] }, strategyType: { type: Type.STRING, enum: ['µ¥ÀÌ', '½ºÀ®', 'ÁßÀå±â'] }, description: { type: Type.STRING }, entryConditions: { type: Type.ARRAY, items: { type: Type.STRING } }, exitConditions: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ['strategyName', 'strategyType', 'description', 'entryConditions', 'exitConditions'] };
+const tradingPlaybookSchema = { type: Type.OBJECT, properties: { strategyName: { type: Type.STRING, enum: ['ë‹¨íƒ€', 'ì¶”ì„¸ë§¤ë§¤ (ë°•ìŠ¤ê¶Œ ëŒíŒŒ)', 'íƒ€ì´ë° ë§¤ìˆ˜', 'ë°•ìŠ¤ê¶Œê±°ë˜', 'ê¸°íƒ€'] }, strategyType: { type: Type.STRING, enum: ['ë°ì´', 'ìŠ¤ìœ™', 'ì¤‘ì¥ê¸°'] }, description: { type: Type.STRING }, entryConditions: { type: Type.ARRAY, items: { type: Type.STRING } }, exitConditions: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ['strategyName', 'strategyType', 'description', 'entryConditions', 'exitConditions'] };
 
-const triggerBoardSchema = { type: Type.OBJECT, properties: { news: { type: Type.STRING, enum: ['ÄÑÁü', '²¨Áü'] }, technical: { type: Type.STRING, enum: ['ÄÑÁü', '²¨Áü'] }, supply: { type: Type.STRING, enum: ['ÄÑÁü', '²¨Áü'] }, psychology: { type: Type.STRING, enum: ['ÄÑÁü', '²¨Áü'] } }, required: ['news', 'technical', 'supply', 'psychology'] };
+const triggerBoardSchema = { type: Type.OBJECT, properties: { news: { type: Type.STRING, enum: ['ì¼œì§', 'êº¼ì§'] }, technical: { type: Type.STRING, enum: ['ì¼œì§', 'êº¼ì§'] }, supply: { type: Type.STRING, enum: ['ì¼œì§', 'êº¼ì§'] }, psychology: { type: Type.STRING, enum: ['ì¼œì§', 'êº¼ì§'] } }, required: ['news', 'technical', 'supply', 'psychology'] };
 
 const dossierInsightsSchema = { type: Type.OBJECT, properties: { signalReliability: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, value: { type: Type.STRING } }, required: ['name', 'value'] } }, entryChecklist: { type: Type.ARRAY, items: { type: Type.STRING } }, commonTraps: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { trap: { type: Type.STRING }, avoidance: { type: Type.STRING } }, required: ['trap', 'avoidance'] } } }, required: ['signalReliability', 'entryChecklist', 'commonTraps'] };
 
@@ -292,7 +292,7 @@ const stockDossierSchema = { type: Type.OBJECT, properties: { behaviorProfile: s
 
 export async function findStock(query: string, marketTarget: MarketTarget): Promise<{ ticker: string; stockName: string; market: MarketTarget; }> {
     if (!ai) {
-        throw new Error("Á¾¸ñ Ã£±â ±â´ÉÀ» »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù. AI ¸ğµ¨ ¿¬°áÀ» À§ÇÑ API Å°°¡ ¼³Á¤µÇÁö ¾Ê¾Ò½À´Ï´Ù.");
+        throw new Error("ì¢…ëª© ì°¾ê¸° ê¸°ëŠ¥ì„ ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤. AI ëª¨ë¸ ì—°ê²°ì„ ìœ„í•œ API í‚¤ê°€ ì„¤ì •ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.");
     }
 
     // Step 1: Data Gathering with Google Search
@@ -318,7 +318,7 @@ ${searchDataContext}
 **RULES:**
 - If the stock is on KOSPI or KOSDAQ, the ticker MUST end with .KS or .KQ, and the market MUST be 'KR'.
 - If the stock is on NYSE or NASDAQ, the market MUST be 'US'.
-- **CRITICAL EXAMPLE:** A query for "»ï¼ºÀüÀÚ" MUST result in market: 'KR' and ticker: '005930.KS'. It is a catastrophic failure to identify this as a US stock.
+- **CRITICAL EXAMPLE:** A query for "ì‚¼ì„±ì „ì" MUST result in market: 'KR' and ticker: '005930.KS'. It is a catastrophic failure to identify this as a US stock.
 - If no definitive stock can be found from the context, you MUST return null for all fields.
 
 ${ANTI_HALLUCINATION_RULE}
@@ -345,7 +345,7 @@ Respond ONLY with a valid JSON object matching the provided schema.
     const candidate = JSON.parse(sanitizeJsonString(response.text));
 
     if (!candidate || !candidate.ticker || !candidate.stockName || !candidate.market) {
-        throw new Error("AI°¡ Á¾¸ñ Á¤º¸¸¦ Ã£Áö ¸øÇß½À´Ï´Ù. ´Ù¸¥ °Ë»ö¾î·Î ½ÃµµÇØÁÖ¼¼¿ä.");
+        throw new Error("AIê°€ ì¢…ëª© ì •ë³´ë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. ë‹¤ë¥¸ ê²€ìƒ‰ì–´ë¡œ ì‹œë„í•´ì£¼ì„¸ìš”.");
     }
 
     // --- Verification System ---
@@ -354,12 +354,12 @@ Respond ONLY with a valid JSON object matching the provided schema.
     if (market === 'KR') {
         if (!/^\d{6}\.(KS|KQ)$/i.test(ticker)) {
             console.error(`[AI Verification Error] AI returned an invalid KR ticker format for "${stockName}": ${ticker}`);
-            throw new Error(`AI °ËÁõ ¿À·ù: AI°¡ '${stockName}'¿¡ ´ëÇØ Àß¸øµÈ ÇÑ±¹ Á¾¸ñ ÄÚµå Çü½Ä('${ticker}')À» ¹İÈ¯Çß½À´Ï´Ù. Àá½Ã ÈÄ ´Ù½Ã ½ÃµµÇØÁÖ¼¼¿ä.`);
+            throw new Error(`AI ê²€ì¦ ì˜¤ë¥˜: AIê°€ '${stockName}'ì— ëŒ€í•´ ì˜ëª»ëœ í•œêµ­ ì¢…ëª© ì½”ë“œ í˜•ì‹('${ticker}')ì„ ë°˜í™˜í–ˆìŠµë‹ˆë‹¤. ì ì‹œ í›„ ë‹¤ì‹œ ì‹œë„í•´ì£¼ì„¸ìš”.`);
         }
     } else if (market === 'US') {
         if (!/^[A-Z.]{1,6}$/i.test(ticker) || /\.(KS|KQ)$/i.test(ticker)) {
             console.error(`[AI Verification Error] AI returned an invalid US ticker format for "${stockName}": ${ticker}`);
-            throw new Error(`AI °ËÁõ ¿À·ù: AI°¡ '${stockName}'¿¡ ´ëÇØ Àß¸øµÈ ¹Ì±¹ Æ¼Ä¿ Çü½Ä('${ticker}')À» ¹İÈ¯Çß½À´Ï´Ù. Àá½Ã ÈÄ ´Ù½Ã ½ÃµµÇØÁÖ¼¼¿ä.`);
+            throw new Error(`AI ê²€ì¦ ì˜¤ë¥˜: AIê°€ '${stockName}'ì— ëŒ€í•´ ì˜ëª»ëœ ë¯¸êµ­ í‹°ì»¤ í˜•ì‹('${ticker}')ì„ ë°˜í™˜í–ˆìŠµë‹ˆë‹¤. ì ì‹œ í›„ ë‹¤ì‹œ ì‹œë„í•´ì£¼ì„¸ìš”.`);
         }
     }
 
@@ -374,7 +374,7 @@ export async function fetchAnalysis(
     setProgress?: (progress: { stage: string, percentage: number }) => void
 ): Promise<AnalysisResult> {
     if (!ai) {
-        throw new Error(`'${stockName}' Á¾¸ñ ºĞ¼®À» ¼öÇàÇÒ ¼ö ¾ø½À´Ï´Ù.`);
+        throw new Error(`'${stockName}' ì¢…ëª© ë¶„ì„ì„ ìˆ˜í–‰í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.`);
     }
 
     const setProgressSafe = (stage: string, percentage: number) => {
@@ -382,7 +382,7 @@ export async function fetchAnalysis(
     };
 
     // --- Smart Cache Check ---
-    setProgressSafe('Ä³½Ã È®ÀÎ Áß..', 5);
+    setProgressSafe('ìºì‹œ í™•ì¸ ì¤‘..', 5);
     const stateKey = `analysis:${marketTarget}:${ticker}`;
     const cacheKey = `analysis_cache_v3:${marketTarget}:${ticker}`;
     const health = await fetchMarketHealthLatest().catch(() => null);
@@ -396,7 +396,7 @@ export async function fetchAnalysis(
             const parsed = JSON.parse(cachedData);
             if (parsed.inputHash === inputHash && isResultValid(parsed.result)) {
                 console.log(`[Cache] Returning valid, hash-matched analysis for ${ticker}.`);
-                setProgressSafe('Ä³½Ã¿¡¼­ °á°ú ·Îµå ¿Ï·á', 100);
+                setProgressSafe('ìºì‹œì—ì„œ ê²°ê³¼ ë¡œë“œ ì™„ë£Œ', 100);
                 return { ...parsed.result, source: 'cache' };
             }
         } catch (e) {
@@ -406,19 +406,19 @@ export async function fetchAnalysis(
     console.log(`[Cache] No valid cache for ${ticker}. Proceeding with full analysis.`);
 
     // --- Data Gathering ---
-    setProgressSafe('µ¥ÀÌÅÍ ¼öÁı Áß..', 10);
+    setProgressSafe('ë°ì´í„° ìˆ˜ì§‘ ì¤‘..', 10);
     const DATA_FETCH_TIMEOUT = 15000;
 
     const dataPromises = {
-        priceInfo: withTimeout(kisApiLimiter(() => _fetchLatestPrice(ticker, stockName, marketTarget)), DATA_FETCH_TIMEOUT, '°¡°İ Á¤º¸ Á¶È¸ ½Ã°£ ÃÊ°ú'),
+        priceInfo: withTimeout(kisApiLimiter(() => _fetchLatestPrice(ticker, stockName, marketTarget)), DATA_FETCH_TIMEOUT, 'ê°€ê²© ì •ë³´ ì¡°íšŒ ì‹œê°„ ì´ˆê³¼'),
         realtimeData: marketTarget === 'KR' && IS_KIWOOM_BRIDGE_ENABLED
-            ? withTimeout(kisApiLimiter(() => fetchRealtimeSnapshot(ticker, ['quote', 'investor', 'daily'], { lookback: { daily: 100 }, calc: 'server', indicators: { source: 'daily', list: [{ name: "SMA", period: 20 }, { name: "EMA", period: 60 }, { name: "RSI", period: 14 }, { name: "MACD" }, { name: "BB", stdDev: 2 }, { name: "ATR", period: 14 }] } }, marketTarget)), DATA_FETCH_TIMEOUT, '½Ç½Ã°£ ½º³À¼¦ Á¶È¸ ½Ã°£ ÃÊ°ú')
+            ? withTimeout(kisApiLimiter(() => fetchRealtimeSnapshot(ticker, ['quote', 'investor', 'daily'], { lookback: { daily: 100 }, calc: 'server', indicators: { source: 'daily', list: [{ name: "SMA", period: 20 }, { name: "EMA", period: 60 }, { name: "RSI", period: 14 }, { name: "MACD" }, { name: "BB", stdDev: 2 }, { name: "ATR", period: 14 }] } }, marketTarget)), DATA_FETCH_TIMEOUT, 'ì‹¤ì‹œê°„ ìŠ¤ëƒ…ìƒ· ì¡°íšŒ ì‹œê°„ ì´ˆê³¼')
             : Promise.resolve(null),
         news: marketTarget === 'KR'
-            ? withTimeout(_fetchNaverNews(stockName), DATA_FETCH_TIMEOUT, '´º½º(³×ÀÌ¹ö) Á¶È¸ ½Ã°£ ÃÊ°ú')
-            : withTimeout(_fetchNewsApi(stockName), DATA_FETCH_TIMEOUT, '´º½º(NewsAPI) Á¶È¸ ½Ã°£ ÃÊ°ú'),
-        financials: withTimeout(_fetchPolygonFinancials(ticker), DATA_FETCH_TIMEOUT, 'Àç¹« Á¤º¸ Á¶È¸ ½Ã°£ ÃÊ°ú'),
-        userBriefings: supabase ? withTimeout(supabase.from('intelligence_briefings').select('title, content, created_at').order('created_at', { ascending: false }).limit(5) as any, DATA_FETCH_TIMEOUT, '»ç¿ëÀÚ ºê¸®ÇÎ Á¶È¸ ½Ã°£ ÃÊ°ú') : Promise.resolve({ data: [], error: null }),
+            ? withTimeout(_fetchNaverNews(stockName), DATA_FETCH_TIMEOUT, 'ë‰´ìŠ¤(ë„¤ì´ë²„) ì¡°íšŒ ì‹œê°„ ì´ˆê³¼')
+            : withTimeout(_fetchNewsApi(stockName), DATA_FETCH_TIMEOUT, 'ë‰´ìŠ¤(NewsAPI) ì¡°íšŒ ì‹œê°„ ì´ˆê³¼'),
+        financials: withTimeout(_fetchPolygonFinancials(ticker), DATA_FETCH_TIMEOUT, 'ì¬ë¬´ ì •ë³´ ì¡°íšŒ ì‹œê°„ ì´ˆê³¼'),
+        userBriefings: supabase ? withTimeout(supabase.from('intelligence_briefings').select('title, content, created_at').order('created_at', { ascending: false }).limit(5) as any, DATA_FETCH_TIMEOUT, 'ì‚¬ìš©ì ë¸Œë¦¬í•‘ ì¡°íšŒ ì‹œê°„ ì´ˆê³¼') : Promise.resolve({ data: [], error: null }),
     };
 
     const [priceResult, realtimeResult, newsResult, financialsResult, briefingsResult] = await Promise.allSettled([
@@ -434,12 +434,12 @@ export async function fetchAnalysis(
 
     if (priceResult.status === 'rejected') {
         const reason = priceResult.reason instanceof Error ? priceResult.reason.message : String(priceResult.reason);
-        throw new Error(`ÇÙ½É °¡°İ Á¤º¸¸¦ °¡Á®¿ÀÁö ¸øÇß½À´Ï´Ù: ${reason}`);
+        throw new Error(`í•µì‹¬ ê°€ê²© ì •ë³´ë¥¼ ê°€ì ¸ì˜¤ì§€ ëª»í–ˆìŠµë‹ˆë‹¤: ${reason}`);
     }
 
     const value = priceResult.value;
     if (!value || typeof value.price !== 'number' || typeof value.timestamp !== 'string') {
-        throw new Error(`ÇÙ½É °¡°İ Á¤º¸¸¦ °¡Á®¿ÀÁö ¸øÇß½À´Ï´Ù: À¯È¿ÇÏÁö ¾ÊÀº °¡°İ µ¥ÀÌÅÍ°¡ ¹İÈ¯µÇ¾ú½À´Ï´Ù.`);
+        throw new Error(`í•µì‹¬ ê°€ê²© ì •ë³´ë¥¼ ê°€ì ¸ì˜¤ì§€ ëª»í–ˆìŠµë‹ˆë‹¤: ìœ íš¨í•˜ì§€ ì•Šì€ ê°€ê²© ë°ì´í„°ê°€ ë°˜í™˜ë˜ì—ˆìŠµë‹ˆë‹¤.`);
     }
 
     priceInfo = value;
@@ -459,18 +459,18 @@ export async function fetchAnalysis(
     appendToFactSheet('User-Provided Intelligence Briefings', briefingsResult, data => (data.data as any[] || []).map((b: any) => `- (${new Date(b.created_at).toLocaleString('ko-KR')}) ${b.title}: ${b.content}`).join('\n'));
 
     // --- AI Analysis Steps ---
-    setProgressSafe('Google °Ë»öÀ¸·Î Á¤º¸ º¸°­ Áß..', 25);
-    const searchPrompt = `**AI ºĞ¼® ÁöÄ§ Á¤º¸ ÅëÇÕ**\n´ç½ÅÀº AI ÅõÀÚ ºĞ¼®°¡ 'Á÷Åõ'ÀÔ´Ï´Ù. ´ç½ÅÀÇ ÀÓ¹«´Â Á¦°øµÈ µ¥ÀÌÅÍ(FACT SHEET)¸¦ ºĞ¼®ÀÇ '¾ŞÄ¿(Anchor)'·Î »ï°í, Google °Ë»öÀ» ÅëÇØ ¾òÀº ¹æ¹ıÀ» °ø°³ Á¤º¸·Î »ç¿ëÇÏ¿© ±× ºĞ¼®À» '°ËÁõ'ÇÏ°í 'È®Àå'ÇÏ´Â °ÍÀÔ´Ï´Ù. ÃÖÁ¾ ¸ñÇ¥´Â Á¤º¸ ¼Ò½º¸¦ Åõ¸íÇÏ°Ô ÅëÇÕÇÏ¿© ´©±¸µµ µû¶ó¿Ã ¼ö ¾ø´Â µ¶º¸ÀûÀÎ ÅëÂû·ÂÀ» Á¦½ÃÇÏ´Â °ÍÀÔ´Ï´Ù.\n\n**¼öÇà ÀÛ¾÷:**\nGoogle °Ë»öÀ» »ç¿ëÇÏ¿© **${stockName} (${ticker})**¿¡ ´ëÇÑ Æ÷°ıÀûÀÎ ÃÖ½Å Á¤º¸¸¦ ¼öÁıÇÏ½Ê½Ã¿À. ´ÙÀ½ ¿µ¿ªÀ» ´Ù·ç½Ê½Ã¿À: ½ÃÀå ½É¸®, ±â¼úÀû ±×¸², Àç¹« ¹× °ÇÀü¼º, ÃË¸Å ¹× ¸®½ºÅ©, °æÀï È¯°æ. Ã£Àº ³»¿ëÀº ÇÑ±¹¾î·Î °£°áÇÏ°í »ç½ÇÀûÀÎ ¿ä¾àÀ¸·Î Á¦°øÇÏ½Ê½Ã¿À.`;
+    setProgressSafe('Google ê²€ìƒ‰ìœ¼ë¡œ ì •ë³´ ë³´ê°• ì¤‘..', 25);
+    const searchPrompt = `**AI ë¶„ì„ ì§€ì¹¨ ì •ë³´ í†µí•©**\në‹¹ì‹ ì€ AI íˆ¬ì ë¶„ì„ê°€ 'ì§íˆ¬'ì…ë‹ˆë‹¤. ë‹¹ì‹ ì˜ ì„ë¬´ëŠ” ì œê³µëœ ë°ì´í„°(FACT SHEET)ë¥¼ ë¶„ì„ì˜ 'ì•µì»¤(Anchor)'ë¡œ ì‚¼ê³ , Google ê²€ìƒ‰ì„ í†µí•´ ì–»ì€ ë°©ë²•ì„ ê³µê°œ ì •ë³´ë¡œ ì‚¬ìš©í•˜ì—¬ ê·¸ ë¶„ì„ì„ 'ê²€ì¦'í•˜ê³  'í™•ì¥'í•˜ëŠ” ê²ƒì…ë‹ˆë‹¤. ìµœì¢… ëª©í‘œëŠ” ì •ë³´ ì†ŒìŠ¤ë¥¼ íˆ¬ëª…í•˜ê²Œ í†µí•©í•˜ì—¬ ëˆ„êµ¬ë„ ë”°ë¼ì˜¬ ìˆ˜ ì—†ëŠ” ë…ë³´ì ì¸ í†µì°°ë ¥ì„ ì œì‹œí•˜ëŠ” ê²ƒì…ë‹ˆë‹¤.\n\n**ìˆ˜í–‰ ì‘ì—…:**\nGoogle ê²€ìƒ‰ì„ ì‚¬ìš©í•˜ì—¬ **${stockName} (${ticker})**ì— ëŒ€í•œ í¬ê´„ì ì¸ ìµœì‹  ì •ë³´ë¥¼ ìˆ˜ì§‘í•˜ì‹­ì‹œì˜¤. ë‹¤ìŒ ì˜ì—­ì„ ë‹¤ë£¨ì‹­ì‹œì˜¤: ì‹œì¥ ì‹¬ë¦¬, ê¸°ìˆ ì  ê·¸ë¦¼, ì¬ë¬´ ë° ê±´ì „ì„±, ì´‰ë§¤ ë° ë¦¬ìŠ¤í¬, ê²½ìŸ í™˜ê²½. ì°¾ì€ ë‚´ìš©ì€ í•œêµ­ì–´ë¡œ ê°„ê²°í•˜ê³  ì‚¬ì‹¤ì ì¸ ìš”ì•½ìœ¼ë¡œ ì œê³µí•˜ì‹­ì‹œì˜¤.`;
     const searchResponse = await generateContentWithRetry({ model: "gemini-2.0-flash-001", contents: searchPrompt, config: { tools: [{ googleSearch: {} }] } });
     factSheet += `\n**Google Search Summary:**\n${searchResponse.text.replace(/\[\d+\]/g, '')}\n`;
     factSheet += `--- FACT SHEET END ---`;
 
-    setProgressSafe('AI ½É¸® ºĞ¼® Áß..', 40);
+    setProgressSafe('AI ì‹¬ë¦¬ ë¶„ì„ ì¤‘..', 40);
     const psychoanalystPrompt = `${DATA_GROUNDING_PROTOCOL}\n**AI Persona Mandate: Psychoanalyst**\nPerform a qualitative analysis. Pay special attention to the quality, persistence, and potential virality of any identified catalysts. **Output Requirement:** Respond ONLY with a single, valid JSON object that strictly follows the provided schema. The entire JSON output MUST be in Korean.\n**CONTEXT:**\n${factSheet}`;
     const psychoanalystResponse = await generateContentWithRetry({ model: "gemini-2.0-flash-001", contents: psychoanalystPrompt, config: { responseMimeType: "application/json", responseSchema: psychoanalystAnalysisSchema } });
     const psychoanalystResult: PsychoanalystAnalysis = JSON.parse(sanitizeJsonString(psychoanalystResponse.text));
 
-    setProgressSafe('AI Àü·« ºĞ¼® Áß..', 60);
+    setProgressSafe('AI ì „ëµ ë¶„ì„ ì¤‘..', 60);
     const strategistGatheringPrompt = `**AI Persona Mandate: Quantitative Research Assistant**\nYour task is to gather the latest information for a stock analysis report on **${stockName} (${ticker})**. Use Google Search to find the most recent data on the following topics: 1. Hedge Fund Activity, 2. Analyst Consensus, 3. Economic Moat, 4. Governance, 5. Short Interest. **Output Requirement:** Compile all your findings into a concise, factual text report in Korean.`;
     const strategistGatheringResponse = await generateContentWithRetry({ model: "gemini-2.0-flash-001", contents: strategistGatheringPrompt, config: { tools: [{ googleSearch: {} }] } });
     const strategistContext = strategistGatheringResponse.text;
@@ -479,17 +479,17 @@ export async function fetchAnalysis(
     const strategistResponse = await generateContentWithRetry({ model: "gemini-2.0-flash-001", contents: strategistPrompt, config: { responseMimeType: "application/json", responseSchema: strategistAnalysisSchema } });
     const strategistResult: StrategistAnalysis = JSON.parse(sanitizeJsonString(strategistResponse.text));
 
-    setProgressSafe('ÃÖÁ¾ °á·Ğ µµÃâ Áß..', 80);
+    setProgressSafe('ìµœì¢… ê²°ë¡  ë„ì¶œ ì¤‘..', 80);
     const synthesisPrompt = `${DATA_GROUNDING_PROTOCOL}\n**AI Persona Mandate: Executive Committee**\nSynthesize a final verdict and an actionable buy plan based on the two provided reports.\n**CONTEXT:**\n1.  **Psychoanalyst's Report:** ${JSON.stringify(psychoanalystResult)}\n2.  **Strategist's Report:** ${JSON.stringify(strategistResult)}\n---\n**Output Requirement:** Respond ONLY with a single, valid JSON object that strictly follows the provided schema. The entire JSON output MUST be in Korean.`;
     const synthesisResponse = await generateContentWithRetry({ model: "gemini-2.0-flash-001", contents: synthesisPrompt, config: { responseMimeType: "application/json", responseSchema: synthesisSchema } });
     const synthesisResult: Synthesis = JSON.parse(sanitizeJsonString(synthesisResponse.text));
 
-    setProgressSafe('Á¾¸ñ ÇÁ·ÎÆÄÀÏ¸µ Áß..', 90);
+    setProgressSafe('ì¢…ëª© í”„ë¡œíŒŒì¼ë§ ì¤‘..', 90);
     const dossierPrompt = `**AI Persona Mandate: Expert Stock Behavior Profiler**\nBased *only* on the provided context (especially the daily price/indicator data in the FACT SHEET), analyze the stock's character and populate the following JSON structure.\n**CONTEXT:**\n---\n${JSON.stringify({ psychoanalystResult, strategistResult, synthesisResult, factSheet })}\n---\n**Output Requirement:** The entire JSON output MUST be in Korean. Respond ONLY with a single, valid JSON object matching the StockDossier schema, with the root key being 'behaviorProfile'.`;
     const stockDossierResponse = await generateContentWithRetry({ model: "gemini-2.0-flash-001", contents: dossierPrompt, config: { responseMimeType: "application/json", responseSchema: stockDossierSchema } });
     const stockDossierResult: StockDossier = JSON.parse(sanitizeJsonString(stockDossierResponse.text));
 
-    setProgressSafe('¸®Æ÷Æ® »ı¼º ¿Ï·á', 100);
+    setProgressSafe('ë¦¬í¬íŠ¸ ìƒì„± ì™„ë£Œ', 100);
     const finalResult: AnalysisResult = {
         ticker,
         stockName,
@@ -512,7 +512,7 @@ export async function fetchAnalysis(
 
 export async function scanForCoinStocks(marketTarget: MarketTarget): Promise<CoinStockSignal[]> {
     if (!ai) {
-        throw new Error(`AI ÄÚÀÎÁÖ ½ºÄ³³Ê¸¦ »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù. ${AI_DISABLED_ERROR_MESSAGE}`);
+        throw new Error(`AI ì½”ì¸ì£¼ ìŠ¤ìºë„ˆë¥¼ ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤. ${AI_DISABLED_ERROR_MESSAGE}`);
     }
 
     const coinStockSignalSchema = {

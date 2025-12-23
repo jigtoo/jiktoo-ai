@@ -35,12 +35,16 @@ class EcosService {
      */
     async getBaseRate(): Promise<number | null> {
         try {
-            const url = `${ECOS_PROXY_URL}?stat=722Y001&freq=M&startDate=202401&endDate=202412&code=0101000`;
+            const today = new Date();
+            const year = today.getFullYear();
+            const lastYear = year - 1;
+            const url = `${ECOS_PROXY_URL}?stat=722Y001&freq=M&startDate=${lastYear}01&endDate=${year}12&code=0101000`;
             const response = await fetch(url);
             const data: EcosResponse = await response.json();
 
             if (data.StatisticSearch?.row?.[0]) {
-                return parseFloat(data.StatisticSearch.row[0].DATA_VALUE);
+                const latest = data.StatisticSearch.row.sort((a, b) => b.TIME.localeCompare(a.TIME))[0];
+                return parseFloat(latest.DATA_VALUE);
             }
             return null;
         } catch (error) {
@@ -54,12 +58,16 @@ class EcosService {
      */
     async getGDPGrowth(): Promise<number | null> {
         try {
-            const url = `${ECOS_PROXY_URL}?stat=200Y001&freq=Q&startDate=202301&endDate=202312&code=10101`;
+            const today = new Date();
+            const year = today.getFullYear();
+            const lastYear = year - 1;
+            const url = `${ECOS_PROXY_URL}?stat=200Y001&freq=Q&startDate=${lastYear}01&endDate=${year}12&code=10101`;
             const response = await fetch(url);
             const data: EcosResponse = await response.json();
 
             if (data.StatisticSearch?.row?.[0]) {
-                return parseFloat(data.StatisticSearch.row[0].DATA_VALUE);
+                const latest = data.StatisticSearch.row.sort((a, b) => b.TIME.localeCompare(a.TIME))[0];
+                return parseFloat(latest.DATA_VALUE);
             }
             return null;
         } catch (error) {
@@ -92,12 +100,17 @@ class EcosService {
      */
     async getExportGrowth(): Promise<number | null> {
         try {
-            const url = `${ECOS_PROXY_URL}?stat=403Y003&freq=M&startDate=202301&endDate=202312&code=I`;
+            const today = new Date();
+            const year = today.getFullYear();
+            const lastYear = year - 1;
+            // 401Y001: 수출입총괄, 1: 수출(Export)
+            const url = `${ECOS_PROXY_URL}?stat=401Y001&freq=M&startDate=${lastYear}01&endDate=${year}12&code=1`;
             const response = await fetch(url);
             const data: EcosResponse = await response.json();
 
             if (data.StatisticSearch?.row?.[0]) {
-                return parseFloat(data.StatisticSearch.row[0].DATA_VALUE);
+                const latest = data.StatisticSearch.row.sort((a, b) => b.TIME.localeCompare(a.TIME))[0];
+                return parseFloat(latest.DATA_VALUE);
             }
             return null;
         } catch (error) {

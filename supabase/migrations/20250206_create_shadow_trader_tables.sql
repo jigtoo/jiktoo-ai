@@ -35,6 +35,33 @@ CREATE TABLE IF NOT EXISTS public.ai_trade_journals (
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
+-- 2.5. virtual_trades table (Trade Execution Log)
+CREATE TABLE IF NOT EXISTS public.virtual_trades (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    stock_name TEXT,
+    action TEXT NOT NULL CHECK (action IN ('BUY', 'SELL')),
+    price NUMERIC NOT NULL,
+    quantity INTEGER NOT NULL,
+    amount NUMERIC NOT NULL,
+    market TEXT NOT NULL CHECK (market IN ('KR', 'US')),
+    reason TEXT,
+    timestamp TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- 2.6. virtual_positions table (Current Holdings)
+CREATE TABLE IF NOT EXISTS public.virtual_positions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    ticker TEXT NOT NULL UNIQUE,
+    stock_name TEXT,
+    quantity INTEGER NOT NULL,
+    avg_price NUMERIC NOT NULL,
+    current_price NUMERIC,
+    market TEXT NOT NULL CHECK (market IN ('KR', 'US')),
+    strategy TEXT,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
 -- 3. cron_job_runs table (for v_cron_job_runs_latest view)
 CREATE TABLE IF NOT EXISTS public.cron_job_runs (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

@@ -15,6 +15,29 @@ export type ProxyStatus = 'connecting' | 'connected' | 'error' | 'disabled';
 // --- NEW: Phase 1 - Market Regime Types ---
 export type MarketRegime = '저변동성 추세장' | '고변동성 혼란장' | '하락장' | '불확실' | '데이터 없음';
 
+// From MarketRegimeService.ts
+export type MarketRegimeType = 'PANIC' | 'BEAR' | 'WEAK_BEAR' | 'SIDEWAYS' | 'WEAK_BULL' | 'BULL' | 'SUPER_BULL';
+
+export interface MarketRegimeStatus {
+    regime: MarketRegimeType;
+    score: number; // 0 ~ 100
+    confidence: number; // 0 ~ 100
+    factors: {
+        macro: string;
+        sentiment: number;
+        technical: string;
+    };
+    detailedFactors: {
+        positive: string[];
+        negative: string[];
+        neutral: string[];
+    };
+    dataQuality: 'excellent' | 'good' | 'low';
+    recommendedExposure: number; // 0 ~ 1.0
+    timestamp: number;
+    lastUpdated: string;
+}
+
 export interface MarketRegimeAnalysis {
     regime: MarketRegime;
     summary: string;
@@ -1036,6 +1059,8 @@ export interface PortfolioItem {
     autopilotStatus?: 'monitoring' | 'analyzing' | 'briefing_ready';
     aiBriefing?: AIBriefing | null;
     executionStatus?: 'idle' | 'executing';
+    isFallback?: boolean; // True if price data is from delayed/daily source
+    currentPrice?: number; // Real-time or delayed price
 }
 
 export interface PortfolioItemAnalysis {
@@ -1103,7 +1128,7 @@ export interface AnalysisChatMessage {
 
 // --- AI TRADER LAB TYPES ---
 
-export type AIInvestmentStyle = 'conservative' | 'balanced' | 'aggressive';
+export type AIInvestmentStyle = 'conservative' | 'balanced' | 'aggressive' | 'unified';
 export type AITurnType = 'general' | 'rebalance' | 'pyramiding';
 
 // FIX: Added missing AITradeDecisionBriefing interface.
@@ -1627,6 +1652,7 @@ export interface CollectorHealthStatus {
     now_utc: string;
     last_ingested_at: string;
     minutes_since_last: number | null;
+    status: 'active' | 'stopped';
 }
 
 export interface AILearningReport {
@@ -1928,4 +1954,46 @@ export interface SMCAnalysis {
     rationale: string;
     smartMoneyActivity: string;
 }
+
+// --- VIRTUAL TRADING TYPES ---
+
+export interface VirtualPosition {
+    ticker: string;
+    stockName: string;
+    avgPrice: number;
+    quantity: number;
+    currentPrice: number;
+    profitRate: number;
+    profitAmount: number;
+    stopLossPrice?: number; // Dynamic Stop Loss
+    maxPriceSinceEntry?: number; // For Trailing Stop
+    pyramidCount?: number; // For Pyramiding limit
+    strategy: 'DAY' | 'SWING' | 'LONG'; // Strategy Tag
+    entryDate?: string;
+    isFallback?: boolean; // Delayed data indicator
+}
+
+export interface VirtualTradeLog {
+    id: string;
+    timestamp: number;
+    type: 'BUY' | 'SELL';
+    ticker: string;
+    stockName: string;
+    price: number;
+    quantity: number;
+    amount: number;
+    fee: number;
+    balanceAfter: number;
+    reason?: string;
+    profitLoss?: number; // Added for Kelly Criterion
+}
+
+export interface VirtualAccount {
+    cash: number;
+    totalAsset: number;
+    positions: VirtualPosition[];
+    tradeLogs: VirtualTradeLog[];
+    initialCapital: number;
+}
+
 

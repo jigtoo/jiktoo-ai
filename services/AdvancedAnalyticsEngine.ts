@@ -1,4 +1,4 @@
-﻿// services/AdvancedAnalyticsEngine.ts
+// services/AdvancedAnalyticsEngine.ts
 import { SchemaType } from "@google/generative-ai";
 import { ai, AI_DISABLED_ERROR_MESSAGE, generateContentWithRetry } from './gemini/client';
 import { sanitizeJsonString } from './utils/jsonUtils';
@@ -20,7 +20,7 @@ class AdvancedAnalyticsEngine {
             throw new Error(AI_DISABLED_ERROR_MESSAGE);
         }
         const response = await generateContentWithRetry({
-            model: "gemini-1.5-flash",
+            model: "gemini-2.0-flash-001",
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -152,8 +152,8 @@ Analyze the provided data for ${analysisResult.stockName}.
 
             const finalRecommendation = `
 ${chiefAnalystInsight.insight}
-KRW遺꾩꽍KRW${chiefAnalystInsight.score.toFixed(0)}??占? 李???湲곕줉?듬떎. 李쭷RW遺꾩꽍 寃곌낵, 湲濡쒕쾶 AI ?뚳옙? 濡쒖뺄 怨듦툒留앹쓽 媛뺣젰KRW寃곌퀬由ш? ?몄뿀?뉻RW
-醫낇빀?? ???륦RW由ъ뒪KRW占?湲곤옙KRW占쎌씡KRW占? 援ш컙濡??⑤땲KRW
+KRW분석KRW${chiefAnalystInsight.score.toFixed(0)}??�? �???기록?�다. 차KRW분석 결과, 글로벌 AI ?��? 로컬 공급망의 강력KRW결고리�? ?�었?�KRW
+종합?? ???�KRW리스KRW�?기�KRW�익KRW�? 구간�??�니KRW
             `.trim();
 
             return {

@@ -1,20 +1,32 @@
 // services/ScannerTools.ts
 /**
- * Scanner Tools
- * Implementation of specialized scans:
- * 1. Value-Pivot Scan (Super-Value + Pivot)
- * 2. Power Play Scan (Strong Momentum)
- * 3. Turnaround Scan (Trend Reversal)
- * 4. Eagle Eye Scan (New Breakouts)
- * 5. Volume Spike Scan (Unusual Volume)
+ * 스캐너 도구 (Scanner Tools) - Data-Driven Edition (v2)
+ *
+ * [핵심 변경 사항]
+ * 기존: AI가 인터넷 검색으로 종목을 발굴 (Hallucination 위험)
+ * 변경: 실제 차트 데이터(Candles)를 주입받아 분석 (Data Injection)
+ *
+ * 이제 모든 스캐너 함수는 `candidates` (실제 가격 데이터가 포함된 후보군)를 인자로 받습니다.
  */
 
-import { fetchCandles } from './dataService';
-import { ai, generateContentWithRetry } from './gemini/client';
-import { supabase } from './supabaseClient';
+import { generateContentWithRetry } from './gemini/client';
 import type { MarketTarget, ScannerResult } from '../types';
 import { sanitizeJsonString } from './utils/jsonUtils';
 import { SchemaType } from '@google/generative-ai';
+
+// Interface for Data Injection
+export interface ScannerCandidate {
+    ticker: string;
+    stockName: string;
+    currentPrice: number;
+    marketCap?: number; // Optional, can be roughly inferred or passed
+    recentCandles: {
+        date: string;
+        close: number;
+        volume: number;
+    }[]; // Last 20 days summary provided to AI
+    technicalSummary?: string; // Pre-calculated indicators (optional)
+}
 
 // Shared Schema for all scans
 const SCANNER_RESULT_SCHEMA = {
@@ -23,261 +35,325 @@ const SCANNER_RESULT_SCHEMA = {
         type: SchemaType.OBJECT,
         properties: {
             ticker: { type: SchemaType.STRING },
-            stockName: { type: SchemaType.STRING },
-            currentPrice: { type: SchemaType.NUMBER },
-            pivotPrice: { type: SchemaType.NUMBER },
-            breakoutLevel: { type: SchemaType.NUMBER },
-            resistanceLevel: { type: SchemaType.NUMBER },
-            upsidePotential: { type: SchemaType.NUMBER },
-            volumeSpike: { type: SchemaType.BOOLEAN },
-            turnaroundSignal: { type: SchemaType.STRING },
-            rationale: { type: SchemaType.STRING }
+            rationale: { type: SchemaType.STRING },
+            technicalScore: { type: SchemaType.NUMBER },
+            patternQuality: { type: SchemaType.STRING, enum: ['High', 'Medium', 'Low'] }
         },
-        required: ['ticker', 'stockName', 'currentPrice', 'rationale']
+        required: ['ticker', 'rationale', 'technicalScore']
     }
 };
 
 /**
- * Super-Value + Pivot Scanner
- * Finds undervalued stocks near pivot points
+ * 슈퍼-밸류 + 피벗 스캐너
  */
-export async function runValuePivotScan(marketTarget: MarketTarget): Promise<ScannerResult[]> {
-    const marketInfo = {
-        name: marketTarget === 'KR' ? 'South Korea (KOSPI/KOSDAQ)' : 'US Market (NYSE/NASDAQ)'
-    };
+export async function runValuePivotScan(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
 
     const prompt = `
-    Find 5 stocks in ${marketInfo.name} that match the "Super-Value + Pivot" criteria:
-    1. Low PER (< 10) & PBR (< 1.0)
-    2. Price is consolidating near a Pivot Point (Support Level)
-    3. Recent Volume dry-up (decreasing volume)
-    
-    Response MUST be a JSON array of objects with fields:
-    - ticker
-    - stockName (Korean)
-    - currentPrice (number)
-    - pivotPrice (number)
-    - upsidePotential (number, %)
-    - rationale (Korean explanation of why it fits)
-    
-    Tools: Use Google Search to find real-time data.
-    
-    CRITICAL: Respond ONLY with a valid JSON array wrapped in markdown code blocks:
-    \`\`\`json
-    [...]
-    \`\`\`
+    Analyze these ${candidates.length} candidates for "Super-Value + Pivot" Setup.
+    Market: ${marketTarget}
+
+    **Candidates Data (Real Market Data):**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-5)
+    })), null, 2)}
+
+    **Instruction**:
+    Analyze the candidates based on:
+    1. **Price Action**: Consolidating near a Pivot Point or Support (20MA).
+    2. **Valuation**: Look for value plays.
+    3. **Strategy**: Identify low-risk entry points.
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
     `;
 
-    return await executeScan(prompt);
+    return await scanCandidatesWithAI(prompt, candidates, 'Value-Pivot');
 }
 
 /**
- * Power Play Scan
- * Finds explosive momentum stocks
+ * 파워 플레이 스캔 (강력한 모멘텀)
  */
-export async function runPowerPlayScan(marketTarget: MarketTarget): Promise<ScannerResult[]> {
-    const marketInfo = {
-        name: marketTarget === 'KR' ? 'South Korea (KOSPI/KOSDAQ)' : 'US Market (NYSE/NASDAQ)'
-    };
+export async function runPowerPlayScan(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
 
     const prompt = `
-    Find 5 "Power Play" stocks in ${marketInfo.name}:
-    1. Stock price up > 50% in last 4 weeks
-    2. Consolidating tightly for < 10 days (Flag pattern)
-    3. Holding above 20-day Moving Average
-    
-    Response MUST be a JSON array of objects with fields:
-    - ticker
-    - stockName (Korean)
-    - currentPrice (number)
-    - breakoutLevel (number)
-    - volumeSpike (boolean)
-    - rationale (Korean)
-    
-    Tools: Use Google Search to find real-time data.
-    
-    CRITICAL: Respond ONLY with a valid JSON array wrapped in markdown code blocks:
-    \`\`\`json
-    [...]
-    \`\`\`
+    Analyze these ${candidates.length} candidates for "Power Play" (High Momentum).
+    Market: ${marketTarget}
+
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-10)
+    })), null, 2)}
+
+    **Instruction**:
+    Find stocks with:
+    1. **Strong Momentum**: Recent price surge with volume.
+    2. **Resilience**: Holding gains.
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
     `;
 
-    return await executeScan(prompt);
+    return await scanCandidatesWithAI(prompt, candidates, 'Power-Play');
 }
 
 /**
- * Turnaround Scan
- * Finds trend reversal candidates
+ * 턴어라운드 스캔 (추세 전환)
  */
-export async function runTurnaroundScan(marketTarget: MarketTarget): Promise<ScannerResult[]> {
-    const marketInfo = {
-        name: marketTarget === 'KR' ? 'South Korea (KOSPI/KOSDAQ)' : 'US Market (NYSE/NASDAQ)'
-    };
+export async function runTurnaroundScan(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
 
     const prompt = `
-    Find 5 "Turnaround" stocks in ${marketInfo.name}:
-    1. Down > 30% from 52-week high
-    2. Showing "Bottoming" signs (Double Bottom, Inv H&S)
-    3. Heavy volume on recent up-days (accumulation)
-    
-    Response MUST be a JSON array of objects with fields:
-    - ticker
-    - stockName (Korean)
-    - currentPrice (number)
-    - resistanceLevel (number)
-    - turnaroundSignal (string)
-    - rationale (Korean)
-    
-    Tools: Use Google Search to find real-time data.
-    
-    CRITICAL: Respond ONLY with a valid JSON array wrapped in markdown code blocks:
-    \`\`\`json
-    [...]
-    \`\`\`
+    Analyze these ${candidates.length} candidates for "Turnaround" (Bottom Fishing).
+    Market: ${marketTarget}
+
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-20)
+    })), null, 2)}
+
+    **Instruction**:
+    Find stocks showing:
+    1. **Bottoming**: Chart pattern (Double Bottom, V-Shape).
+    2. **Volume**: Spikes at lows (Accumulation).
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
     `;
 
-    return await executeScan(prompt);
+    return await scanCandidatesWithAI(prompt, candidates, 'Turnaround');
 }
 
 /**
- * Eagle Eye Scanner
- * Finds new technical breakouts occurring right now.
+ * 이글 아이 스캐너 (새로운 돌파)
  */
-export async function runEagleEyeScanner(marketTarget: MarketTarget): Promise<ScannerResult[]> {
-    const marketInfo = {
-        name: marketTarget === 'KR' ? 'South Korea (KOSPI/KOSDAQ)' : 'US Market (NYSE/NASDAQ)'
-    };
+export async function runEagleEyeScanner(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
 
     const prompt = `
-    Act as an "Eagle Eye" Technical Scanner. Find 3-5 stocks in ${marketInfo.name} that are breaking out TODAY.
-    Criteria:
-    1. Crossing above a major resistance level (52-week high or multi-month base).
-    2. Volume is significantly higher than average (> 150%).
-    3. Price action is strong (closing near highs).
+    Act as "Eagle Eye". Find breakouts happening NOW among these candidates.
+    Market: ${marketTarget}
 
-    Response MUST be a JSON array of objects with fields:
-    - ticker
-    - stockName (Korean)
-    - currentPrice (number)
-    - breakoutLevel (number)
-    - rationale (Korean explanation of the breakout pattern)
-    
-    Tools: Use Google Search to find real-time data.
-    
-    CRITICAL: Respond ONLY with a valid JSON array wrapped in markdown code blocks:
-    \`\`\`json
-    [...]
-    \`\`\`
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-5)
+    })), null, 2)}
+
+    **Criteria:**
+    1. **Breakout**: Price breaking above recent resistance/highs.
+    2. **Volume**: Noticeable volume increase vs average.
+    3. **Close**: Closing near highs.
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
     `;
 
-    return await executeScan(prompt, 'Eagle-Eye');
+    return await scanCandidatesWithAI(prompt, candidates, 'Eagle-Eye');
 }
 
 /**
- * Volume Spike Scanner
- * Finds unusual volume activity without necessarily a huge price move yet (Accumulation).
+ * 거래량 급증 스캐너 (Volume Spike)
  */
-export async function runVolumeSpikeScanner(marketTarget: MarketTarget): Promise<ScannerResult[]> {
-    const marketInfo = {
-        name: marketTarget === 'KR' ? 'South Korea (KOSPI/KOSDAQ)' : 'US Market (NYSE/NASDAQ)'
-    };
+export async function runVolumeSpikeScanner(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
 
     const prompt = `
-    Find 3-5 "Hidden Accumulation" stocks in ${marketInfo.name} showing unusual volume spikes TODAY.
-    Criteria:
-    1. Volume > 300% of 20-day average.
-    2. Price change is relatively small (< 3%) or consolidating.
-    3. Suggests institutional accumulation before a move.
+    Find "Hidden Accumulation" (Volume Spike) among these candidates.
+    Market: ${marketTarget}
 
-    Response MUST be a JSON array of objects with fields:
-    - ticker
-    - stockName (Korean)
-    - currentPrice (number)
-    - volumeSpike (true)
-    - rationale (Korean explanation of volume characteristics)
-    
-    Tools: Use Google Search to find real-time data.
-    
-    CRITICAL: Respond ONLY with a valid JSON array wrapped in markdown code blocks:
-    \`\`\`json
-    [...]
-    \`\`\`
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-5)
+    })), null, 2)}
+
+    **Criteria:**
+    1. **Volume Spike**: Significant volume increase without massive price drop.
+    2. **Accumulation**: Price stability despite high volume.
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
     `;
 
-    return await executeScan(prompt, 'Volume-Spike');
+    return await scanCandidatesWithAI(prompt, candidates, 'Volume-Spike');
 }
 
-// Helper to execute Gemini scan
-async function executeScan(prompt: string, defaultMatchType: string = 'Scan-Result'): Promise<ScannerResult[]> {
+/**
+ * AI 통찰: 거래량 고갈 (Volume Dry-Up)
+ */
+export async function runVolumeDryUpScan(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
+
+    const prompt = `
+    Find "Volume Dry-Up" (Volatility Contraction) candidates.
+    Market: ${marketTarget}
+
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-5)
+    })), null, 2)}
+
+    **Instruction**:
+    Identify candidates with:
+    1. **Dry Up**: Significant volume decrease.
+    2. **Tight**: Price range narrowing (VCP).
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
+    `;
+
+    return await scanCandidatesWithAI(prompt, candidates, 'Volume-DryUp');
+}
+
+/**
+ * AI 통찰: 숨겨진 강세 (Hidden Strength)
+ */
+export async function runHiddenStrengthScan(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
+
+    const prompt = `
+    Find "Hidden Strength" candidates (Relative Strength).
+    Market: ${marketTarget}
+
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-10)
+    })), null, 2)}
+
+    **Instruction**:
+    Identify stocks with:
+    1. **Resilience**: Holding ground despite weak market.
+    2. **Trend**: Higher lows.
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
+    `;
+
+    return await scanCandidatesWithAI(prompt, candidates, 'Hidden-Strength');
+}
+
+/**
+ * 명예의 전당 스캔 (Hall of Fame) - Minervini & Larry Williams Style
+ */
+export async function runHallOfFameScan(marketTarget: MarketTarget, candidates: ScannerCandidate[]): Promise<ScannerResult[]> {
+    if (!candidates || candidates.length === 0) return [];
+
+    const prompt = `
+    Analyze these ${candidates.length} candidates for "Hall of Fame" (Precision Strategy).
+    Market: ${marketTarget}
+
+    **Candidates Data:**
+    ${JSON.stringify(candidates.map(c => ({
+        ticker: c.ticker,
+        name: c.stockName,
+        price: c.currentPrice,
+        history: c.recentCandles.slice(-20) // Need more history for trend
+    })), null, 2)}
+
+    **Instruction**:
+    Identified candidates matching LEGENDARY criteria:
+    1. **Mark Minervini**: Strong uptrend (Stage 2), Price > 50MA > 150MA > 200MA.
+    2. **Larry Williams**: Volatility Breakout or unique accumulation patterns.
+
+    **CRITICAL OUTPUT RULES**:
+    - The "rationale" field MUST be written in **Natural Korean (자연스러운 한국어)**.
+    - Ensure strict **UTF-8 encoding**. No mojibake.
+    - Output MUST be a valid JSON array.
+    `;
+
+    return await scanCandidatesWithAI(prompt, candidates, 'Hall-of-Fame');
+}
+
+
+// --- Helper: Execute AI Scan with Data Injection ---
+async function scanCandidatesWithAI(prompt: string, candidates: ScannerCandidate[], strategyName: string): Promise<ScannerResult[]> {
+    // [Verification Log] Show the user that REAL DATA is being sent
+    console.log(`[ScannerTools] 🧠 Sending Data-Driven Prompt for ${strategyName} (${candidates.length} items)`);
+    // console.log(`[ScannerTools] 📝 Prompt Preview:\n${prompt.substring(0, 500)}...`); // Uncomment for deep debug
+
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.0-flash-001',
             contents: prompt,
             config: {
                 responseMimeType: 'application/json',
-                responseSchema: SCANNER_RESULT_SCHEMA,
-                tools: [{ googleSearch: {} }]
+                responseSchema: SCANNER_RESULT_SCHEMA
             }
         });
 
-        // Parse and standardize result
         let text = response.text || '[]';
-
-        // Robust JSON extraction
         const jsonStart = text.indexOf('[');
         const jsonEnd = text.lastIndexOf(']');
-
         if (jsonStart !== -1 && jsonEnd !== -1) {
             text = text.substring(jsonStart, jsonEnd + 1);
-        } else {
-            // Fallback cleanup if markers not found but might be wrapped in code blocks
-            text = text.replace(/```json\n?|\n?```/g, '').trim();
         }
 
-        let raw: any[];
-        try {
-            raw = JSON.parse(text);
-        } catch (e) {
-            console.warn(`[ScannerTools] JSON Parse Failed. Attempting sanitization... Raw Text: ${text.slice(0, 100)}...`);
-            const sanitized = sanitizeJsonString(text);
-            raw = JSON.parse(sanitized);
-        }
+        const aiResults: any[] = JSON.parse(sanitizeJsonString(text));
 
-        if (!Array.isArray(raw)) {
-            // Handle case where AI returns single object instead of array
-            if (typeof raw === 'object' && raw !== null) {
-                if ((raw as any).results && Array.isArray((raw as any).results)) {
-                    raw = (raw as any).results;
-                } else {
-                    raw = [raw];
-                }
-            } else {
-                throw new Error('AI response is not an array');
-            }
-        }
+        // Map AI results back to Real Data (Cross-Verification)
+        return aiResults.map(res => {
+            const realData = candidates.find(c => c.ticker === res.ticker);
+            if (!realData) return null; // Filter out hallucinations
 
-        return raw.map(item => ({
-            ticker: item.ticker || 'N/A',
-            stockName: item.stockName || 'Unknown',
-            matchType: defaultMatchType,
-            price: item.currentPrice || 0,
-            changeRate: 0,
-            volumeStrength: item.volumeSpike ? 100 : 50,
-            reason: item.rationale || item.reason || 'No rationale provided',
-            technicalSignal: item.rationale || item.reason
-        })).filter(item => item.ticker !== 'N/A' && item.ticker !== 'Unknown' && item.ticker.length > 0);
+            return {
+                ticker: realData.ticker,
+                stockName: realData.stockName,
+                matchType: strategyName,
+                price: realData.currentPrice, // FORCE REAL PRICE
+                changeRate: 0, // Could calculate if needed
+                volumeStrength: res.patternQuality === 'High' ? 100 : 70,
+                technicalSignal: res.rationale,
+                reason: res.rationale
+            };
+        }).filter(item => item !== null) as ScannerResult[];
 
     } catch (error) {
-        console.error(`[ScannerTools] Scan failed for prompt type ${defaultMatchType}:`, error);
+        console.error(`[ScannerTools] AI Scan failed for ${strategyName}:`, error);
         return [];
     }
 }
 
-// Name-space export for compatibility with hooks that use `scannerTools.run...`
 export const scannerTools = {
     runValuePivotScan,
     runPowerPlayScan,
     runTurnaroundScan,
     runEagleEyeScanner,
-    runVolumeSpikeScanner
+    runVolumeSpikeScanner,
+    runVolumeDryUpScan,
+    runHiddenStrengthScan
 };

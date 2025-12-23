@@ -14,21 +14,51 @@ export function sanitizeJsonString(text: string): string {
         // Continue to sanitization
     }
 
-    // 2. Remove Markdown code blocks first
-    let cleaned = text.replace(/```json\n?|```/g, '');
-
-    // 3. Extract JSON using Regex (Finding the largest outer {} or [])
-    // This regex looks for the first { or [ and captures everything valid-looking until the end
-    // But a better way is to simply find the FIRST [ ... ] or { ... } block.
-    // We use a simple loop or regex. Let's use a regex that matches { ... } or [ ... ] across lines.
-    const match = cleaned.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-
-    if (match) {
-        cleaned = match[0];
-    } else {
-        // Fallback: simple trim if no brackets found (likely garbage)
-        cleaned = cleaned.trim();
+    // 2. [Improved] Extract from Markdown code block if present
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+        return codeBlockMatch[1].trim();
     }
 
-    return cleaned;
+    // 3. [Robust] Stack-based extraction (to handle trailing text with brackets)
+    const firstOpenBrace = text.indexOf('{');
+    const firstOpenBracket = text.indexOf('[');
+
+    let startIdx = -1;
+    let endChar = '';
+
+    // Determine start character (whichever comes first)
+    if (firstOpenBrace !== -1 && (firstOpenBracket === -1 || firstOpenBrace < firstOpenBracket)) {
+        startIdx = firstOpenBrace;
+        endChar = '}';
+    } else if (firstOpenBracket !== -1) {
+        startIdx = firstOpenBracket;
+        endChar = ']';
+    }
+
+    if (startIdx !== -1) {
+        let balance = 0;
+        const startChar = text[startIdx];
+
+        for (let i = startIdx; i < text.length; i++) {
+            if (text[i] === startChar) {
+                balance++;
+            } else if (text[i] === endChar) {
+                balance--;
+                if (balance === 0) {
+                    return text.substring(startIdx, i + 1);
+                }
+            }
+        }
+        // If we get here, brackets weren't balanced (truncated output?). 
+        // Try regex fallback as a last resort or just return what we deemed started.
+    }
+
+    // 4. Fallback: Greedy Regex (Legacy)
+    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (match) {
+        return match[0];
+    }
+
+    return text.trim();
 }

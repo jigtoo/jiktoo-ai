@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { AIEvolutionEvent, CollectorHealthStatus, AIGrowthJournalEntry, AIPrediction, AIPredictionsDBRow, AILearningReport, EnrichedLearningReport, TelegramLearningReport, TopConvictionPickData, MarketTarget, PerformanceStats, Json, SystemSignalStatus, SystemSignalLog, CronJobRunDetail, KpiSummary, KpiDelta, WeeklyDeformationRow } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { generateGrowthJournalEntry } from '../services/gemini/evolutionService';
-import { _fetchLatestPrice } from '../services/dataService';
+// import { _fetchLatestPrice } from '../services/dataService'; // REMOVED: Backend service import causes 500 error in frontend
 import { ai, AI_DISABLED_ERROR_MESSAGE } from '../services/gemini/client';
 import { Type } from "@google/genai";
 import { sanitizeJsonString } from '../services/utils/jsonUtils';
@@ -162,9 +162,22 @@ export const useAIEvolution = () => {
         setIsStatsLoading(true);
 
         try {
-            const { data, error } = await supabase.from('v_performance_stats_summary').select('*').single();
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Performance Stats Timeout')), 15000));
 
-            if (error) throw error;
+            const fetchPromise = supabase.from('v_performance_stats_summary').select('*').single();
+            const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
+
+            if (error) {
+                // View might not exist yet - use default values
+                setPerformanceStats({
+                    totalReviewed: 0,
+                    successRate: 0,
+                    swingTrade: { count: 0, successRate: 0 },
+                    dayTrade: { count: 0, successRate: 0 },
+                    last_updated_ts: null
+                });
+                return;
+            }
 
             const statsData = data as any;
             if (statsData) {
@@ -186,7 +199,14 @@ export const useAIEvolution = () => {
             }
 
         } catch (e) {
-            console.error("Failed to fetch performance stats from view", e);
+            // Silently fail with default stats (view doesn't exist yet)
+            setPerformanceStats({
+                totalReviewed: 0,
+                successRate: 0,
+                swingTrade: { count: 0, successRate: 0 },
+                dayTrade: { count: 0, successRate: 0 },
+                last_updated_ts: null
+            });
         } finally {
             setIsStatsLoading(false);
         }
@@ -217,12 +237,33 @@ export const useAIEvolution = () => {
         }
         setIsLoading(true);
         setError(null);
+
+        const fetchWithRetry = async (retries = 3, backoff = 1000): Promise<any> => {
+            try {
+                // Extended timeout to 15 seconds for timeline queries
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Timeline Timeout (15초)')), 15000)
+                );
+
+                const fetchPromise = supabase
+                    .from('ai_evolution_timeline')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+
+                return await Promise.race([fetchPromise, timeoutPromise]);
+            } catch (err) {
+                if (retries > 0) {
+                    console.log(`[Evolution] Timeline fetch failed. Retrying in ${backoff}ms... (${retries} left)`);
+                    await new Promise(res => setTimeout(res, backoff));
+                    return fetchWithRetry(retries - 1, backoff * 2);
+                }
+                throw err;
+            }
+        };
+
         try {
-            const { data, error } = await supabase
-                .from('ai_evolution_timeline')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(50); // Optimized limit
+            const { data, error } = await fetchWithRetry();
 
             if (error) throw error;
 
@@ -308,35 +349,45 @@ export const useAIEvolution = () => {
         setHealthError(null);
         try {
             if (supabase) {
-                const { data, error } = await supabase
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Collector Health Timeout')), 5000));
+
+                const fetchHealth = supabase
                     .from('collector_health')
                     .select('*')
                     .single();
 
-                if (data) {
-                    // Check user_intelligence_briefings via RPC (to bypass RLS)
-                    const { data: briefings } = await supabase.rpc('get_all_briefings');
-                    const briefingData = briefings && briefings.length > 0 ? briefings[0] : null;
+                const { data, error: healthError } = await Promise.race([fetchHealth, timeoutPromise]) as any;
 
+                if (data) {
                     let finalData = data as CollectorHealthStatus;
 
-                    if (briefingData && briefingData.created_at) {
-                        const lastIngestedHealth = finalData.last_ingested_at ? new Date(finalData.last_ingested_at).getTime() : 0;
-                        const lastBriefing = new Date(briefingData.created_at).getTime();
+                    // RPC call with its own timeout or handle gracefully
+                    try {
+                        const rpcPromise = supabase.rpc('get_all_briefings');
+                        const { data: briefings } = await Promise.race([rpcPromise, timeoutPromise]) as any;
 
-                        // If briefing is newer (which it is), use its timestamp
-                        if (lastBriefing > lastIngestedHealth) {
-                            const now = new Date().getTime();
-                            const diffMinutes = Math.max(0, (now - lastBriefing) / (1000 * 60));
+                        const briefingData = briefings && briefings.length > 0 ? briefings[0] : null;
 
-                            finalData = {
-                                ...finalData,
-                                last_ingested_at: briefingData.created_at,
-                                minutes_since_last: diffMinutes,
-                                // If status logic depends on minutes, update it
-                                status: diffMinutes <= 30 ? 'active' : 'stopped'
-                            };
+                        if (briefingData && briefingData.created_at) {
+                            const lastIngestedHealth = finalData.last_ingested_at ? new Date(finalData.last_ingested_at).getTime() : 0;
+                            const lastBriefing = new Date(briefingData.created_at).getTime();
+
+                            // If briefing is newer (which it is), use its timestamp
+                            if (lastBriefing > lastIngestedHealth) {
+                                const now = new Date().getTime();
+                                const diffMinutes = Math.max(0, (now - lastBriefing) / (1000 * 60));
+
+                                finalData = {
+                                    ...finalData,
+                                    last_ingested_at: briefingData.created_at,
+                                    minutes_since_last: diffMinutes,
+                                    status: diffMinutes <= 30 ? 'active' : 'stopped'
+                                };
+                            }
                         }
+                    } catch (rpcErr) {
+                        console.warn("[fetchCollectorHealth] RPC get_all_briefings failed or timed out", rpcErr);
+                        // Continue with the collector_health data only
                     }
 
                     setCollectorHealth(finalData);
@@ -355,7 +406,8 @@ export const useAIEvolution = () => {
                 setCollectorHealth({
                     now_utc: now,
                     last_ingested_at: now,
-                    minutes_since_last: 0
+                    minutes_since_last: 0,
+                    status: 'active'
                 });
             }
         } catch (e) {
@@ -363,7 +415,8 @@ export const useAIEvolution = () => {
             setCollectorHealth({
                 now_utc: now,
                 last_ingested_at: now,
-                minutes_since_last: 0
+                minutes_since_last: 0,
+                status: 'stopped'
             });
         } finally {
             setIsHealthLoading(false);
@@ -466,7 +519,21 @@ export const useAIEvolution = () => {
 
             for (const prediction of (predictions as any[] as AIPredictionsDBRow[])) {
                 const { ticker, stockName } = (prediction.prediction_data as unknown as TopConvictionPickData);
-                const { price: finalPrice } = await _fetchLatestPrice(ticker, stockName, market);
+
+                // [FRONTEND FIX] Direct fetch to Proxy instead of importing backend service
+                // const { price: finalPrice } = await _fetchLatestPrice(ticker, stockName, market);
+                let finalPrice = prediction.price_at_prediction;
+                try {
+                    // Assuming Proxy is available at localhost:8080
+                    const res = await fetch(`http://127.0.0.1:8080/rt-snapshot?ticker=${ticker}&market=${market}&fields=quote`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        finalPrice = parseFloat(json.quote?.stck_prpr || json.quote?.last || prediction.price_at_prediction);
+                    }
+                } catch (err) {
+                    console.warn(`[useAIEvolution] Failed to fetch live price for ${ticker}, using saved price.`, err);
+                }
+
                 const initialPrice = prediction.price_at_prediction;
 
                 const success = finalPrice > initialPrice;
@@ -505,11 +572,18 @@ export const useAIEvolution = () => {
         }
 
         try {
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Signal Monitor Timeout')), 5000));
+
+            const fetchStatus = supabase.from('v_system_signal_status').select('*').single();
+            const fetchLog = supabase.from('system_signal_outbox').select('*').order('created_at', { ascending: false }).limit(20);
+            const fetchCron = supabase.from('v_cron_job_runs_latest').select('*').limit(10);
+
             const [statusRes, logRes, cronRes] = await Promise.all([
-                supabase.from('v_system_signal_status').select('*').single(),
-                supabase.from('system_signal_outbox').select('*').order('created_at', { ascending: false }).limit(20),
-                supabase.from('v_cron_job_runs_latest').select('*').limit(10),
-            ]);
+                Promise.race([fetchStatus, timeoutPromise]),
+                Promise.race([fetchLog, timeoutPromise]),
+                Promise.race([fetchCron, timeoutPromise]),
+            ]) as any[];
+
             if (statusRes.error) throw new Error(`Status fetch failed: ${statusRes.error.message}`);
             if (logRes.error) throw new Error(`Log fetch failed: ${logRes.error.message}`);
             if (cronRes.error) throw new Error(`Cron jobs fetch failed: ${cronRes.error.message}`);
@@ -536,13 +610,15 @@ export const useAIEvolution = () => {
         }
 
         try {
-            const [summaryRes, deltasRes] = await Promise.all([
-                supabase.from('v_exec_kpi_summary_7d_latest').select('*').single(),
-                supabase.from('v_exec_kpi_deltas_latest').select('*').limit(20),
-            ]);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('KPI Data Timeout')), 5000));
 
-            // Allow 406 (Not Acceptable) which happens if View returns 0 rows (single() fails)
-            // Or handle it gracefully.
+            const fetchSummary = supabase.from('v_exec_kpi_summary_7d_latest').select('*').single();
+            const fetchDeltas = supabase.from('v_exec_kpi_deltas_latest').select('*').limit(20);
+
+            const [summaryRes, deltasRes] = await Promise.all([
+                Promise.race([fetchSummary, timeoutPromise]),
+                Promise.race([fetchDeltas, timeoutPromise]),
+            ]) as any[];
 
             if (summaryRes.error && summaryRes.error.code !== 'PGRST116') throw new Error(`KPI summary fetch failed: ${summaryRes.error.message}`);
             if (deltasRes.error) throw new Error(`KPI deltas fetch failed: ${deltasRes.error.message}`);
@@ -568,7 +644,11 @@ export const useAIEvolution = () => {
         }
 
         try {
-            const { data, error } = await supabase.from('v_weekly_deformations').select('*');
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Deformations Timeout')), 5000));
+            const fetchPromise = supabase.from('v_weekly_deformations').select('*');
+
+            const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
+
             if (error) throw error;
             setWeeklyDeformations(data as WeeklyDeformationRow[]);
         } catch (e) {

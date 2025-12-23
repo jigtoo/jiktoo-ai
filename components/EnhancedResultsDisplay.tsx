@@ -74,6 +74,7 @@ interface EnhancedResultsDisplayProps {
     onUpdateUserNote: (note: UserNote) => void;
     onGoHome: () => void;
     marketTarget: MarketTarget;
+    onSubscribeTelegram?: (ticker: string, stockName: string) => void;
 }
 
 export const EnhancedResultsDisplay: React.FC<EnhancedResultsDisplayProps> = ({
@@ -82,6 +83,7 @@ export const EnhancedResultsDisplay: React.FC<EnhancedResultsDisplayProps> = ({
     onUpdateUserNote,
     onGoHome,
     marketTarget,
+    onSubscribeTelegram,
 }) => {
     let currentPrice: number;
     if (typeof result.referencePrice === 'number') {
@@ -98,7 +100,12 @@ export const EnhancedResultsDisplay: React.FC<EnhancedResultsDisplayProps> = ({
 
     return (
         <div className="space-y-8 animate-fade-in">
-            <ExecutiveDecisionBriefing result={result} onOpenFormForAnalysis={onOpenFormForAnalysis} onGoHome={onGoHome} />
+            <ExecutiveDecisionBriefing
+                result={result}
+                onOpenFormForAnalysis={onOpenFormForAnalysis}
+                onGoHome={onGoHome}
+                onSubscribeWatcher={onSubscribeTelegram}
+            />
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
                 {/* --- AI 심리분석가 (Qualitative) --- */}

@@ -1,4 +1,4 @@
-// services/gemini/stockDiscoveryService.ts
+﻿// services/gemini/stockDiscoveryService.ts
 import { generateContentWithRetry } from './client';
 import type { MarketTarget } from '../../types';
 import { SchemaType } from '@google/generative-ai';
@@ -31,7 +31,7 @@ export const discoverStocksByTheme = async (theme: InvestmentTheme, marketTarget
     const prompt = `
     Find 5 stocks in ${marketName} directly beneficial to the theme: "${theme.name}".
     
-    **LANGUAGE INSTRUCTION:** All output MUST be in **Korean (?�국??**.
+    **LANGUAGE INSTRUCTION:** All output MUST be in **Korean (한국어)**.
 
     **CRITICAL ANALYSIS INSTRUCTION:**
     - Look beyond end-product brands. **Focus heavily on upstream component suppliers with high technology moats.**

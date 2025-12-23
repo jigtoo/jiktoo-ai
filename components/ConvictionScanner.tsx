@@ -6,9 +6,10 @@ import { HandshakeIcon, RefreshIcon, BrainIcon } from './icons';
 interface ConvictionScannerProps {
     forceGlobalScan: () => void;
     isGlobalScanning: boolean;
+    scanProgress?: string;
 }
 
-export const ConvictionScanner: React.FC<ConvictionScannerProps> = ({ forceGlobalScan, isGlobalScanning }) => {
+export const ConvictionScanner: React.FC<ConvictionScannerProps> = ({ forceGlobalScan, isGlobalScanning, scanProgress }) => {
     return (
         <div className="p-6 bg-gray-800/50 border border-gray-700 rounded-xl shadow-lg text-center mb-8">
             <div className="inline-block bg-gray-700 p-3 rounded-full mb-3">
@@ -30,7 +31,10 @@ export const ConvictionScanner: React.FC<ConvictionScannerProps> = ({ forceGloba
 
             {isGlobalScanning && (
                 <div className="mt-4">
-                    <LoadingSpinner message="모든 데이터 소스를 기반으로 시장을 다시 스캔하고 있습니다..." />
+                    <LoadingSpinner message={scanProgress || "모든 데이터 소스를 기반으로 시장을 다시 스캔하고 있습니다..."} />
+                    <p className="text-sm text-gray-500 mt-2">
+                        💡 진행 상황을 실시간으로 확인하려면 <kbd className="px-2 py-1 bg-gray-700 rounded">F12</kbd> → Console 탭을 열어보세요
+                    </p>
                 </div>
             )}
         </div>

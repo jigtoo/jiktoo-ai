@@ -1,6 +1,6 @@
-import { MarketTarget } from '../../types';
 import { sniperService } from './SniperService';
-import { safetyGuard } from './SafetyGuard';
+import { marketRegimeService } from '../MarketRegimeService';
+import { deepResearchService } from '../DeepResearchService';
 
 /**
  * [Architecture 2.0] Execution Engine - ExecutionCommander
@@ -20,9 +20,9 @@ interface CommanderConfig {
 }
 
 class ExecutionCommander {
-    private isActive = false;
+    private isActive = true; // [Learning Mode] Auto-start for continuous learning
     private config: CommanderConfig = {
-        sniperThreshold: 90
+        sniperThreshold: 60 // [Learning Mode] Lower threshold to allow more experimental trades
     };
 
     constructor() {
@@ -49,38 +49,60 @@ class ExecutionCommander {
             return;
         }
 
-        // 1. Evaluate Confidence
+        // 1. Evaluate Confidence & Market Compatibility
         const confidence = playbook.score || playbook.confidence || 0;
+        const regimeStatus = marketRegimeService.getLastStatus(market);
+        const exposure = regimeStatus?.recommendedExposure ?? 0.3;
+
+        // [Adaptive Sizing Phase 1]
+        // Base Amount: 1M KRW (Standard)
+        // Adjusted by: (Confidence / 100) * (Market Exposure)
+        // If Confidence = 100, Market = Super Bull (1.0) -> Amount = 1M
+        // If Confidence = 90, Market = Sideways (0.5) -> Amount = 450k
+        const baseAllocation = market === 'KR' ? 1000000 : 1000; // 1M KRW or 1000 USD
+        // [Scanner-Driven Override] Ensure minimum exposure for high conviction signals even in Bear Markets
+        // User Request: "Remove Regime Filter" -> Minimum 0.3 allocation
+        const effectiveExposure = Math.max(exposure, 0.3);
+        const dynamicAllocation = Math.round(baseAllocation * (confidence / 100) * effectiveExposure);
+
         if (confidence < this.config.sniperThreshold) {
             console.log(`[ExecutionCommander] 🛑 Rejected: Score ${confidence} < Threshold ${this.config.sniperThreshold}`);
             return;
         }
 
-        console.log(`[ExecutionCommander] 🌩️ COMMANDER AUTHORIZED: Executing Sniper for ${playbook.ticker} (Score ${confidence})`);
+        /* [Disabled by User Request - Bottom-Up Mode]
+        if (exposure <= 0) {
+            console.log(`[ExecutionCommander] 🛑 Rejected: Market Regime (${regimeStatus?.regime}) forbids new exposure.`);
+            return;
+        }
+        */
 
-        // 2. Delegate to Sniper (The Hands)
-        // Default allocation: 10% of portfolio (for now, will be dynamic later)
-        // We need to fetch total asset first to calculate actual amount, but SafetyGuard checks ratio anyway.
-        // Let's assume a standard allocation logic or pass a fixed amount for now.
-        // Ideally, Position Sizer should be here.
-        // For Phase 1, we use a fixed mock allocation or just trigger "buy max safe".
+        // 2. [Ghost Protocol] Deep Research Verification
+        console.log(`[ExecutionCommander] 🕵️ Ghost Protocol: Verifying ${playbook.ticker}...`);
+        const forensicResult = await deepResearchService.analyzePricedInRisk(playbook.ticker, market);
 
+        // [Learning Mode] Relaxed Ghost Protocol - Allow learning from "priced-in" stocks
+        if (forensicResult.isPricedIn && forensicResult.riskScore > 90) {
+            console.warn(`[ExecutionCommander] 🛑 ABORT: ${playbook.ticker} is EXTREMELY PRE-PRICED (${forensicResult.riskScore}/100). Risk: ${forensicResult.rationale}`);
+            return;
+        } else if (forensicResult.isPricedIn && forensicResult.riskScore > 70) {
+            console.log(`[ExecutionCommander] ⚠️ CAUTION: ${playbook.ticker} may be priced-in (${forensicResult.riskScore}/100), but proceeding for learning.`);
+        }
+
+        console.log(`[ExecutionCommander] 🌩️ COMMANDER AUTHORIZED: Executing for ${playbook.ticker} (Score ${confidence}, Market ${regimeStatus?.regime}, Amount ${dynamicAllocation})`);
+
+        // 3. Delegate to Sniper (The Hands)
         const success = await sniperService.executeOrder({
             ticker: playbook.ticker,
             stockName: playbook.stockName || playbook.ticker,
             confidence: confidence,
-            allocation: 1000000 // Mock: 1 Million KRW per trade (needs PositionSizer)
+            allocation: dynamicAllocation
         }, market);
 
         if (success) {
-            console.log(`[ExecutionCommander] Trade Successful. Reporting to Evolution Engine.`);
-            // [Architecture 2.0] Evolution Loop
-            // We assume sniperService returns details or we pass context.
-            // For now, simpler notification.
-            // TODO: In Phase 4, we'd pass the actual trade record ID.
+            console.log(`[ExecutionCommander] ✅ Trade Successful. Reporting to Evolution Engine.`);
         } else {
-            console.warn(`[ExecutionCommander] Trade Failed. Logging error for future analysis.`);
-            // Register loss or failure? SafetyGuard might register loss later on PnL check.
+            console.warn(`[ExecutionCommander] ❌ Trade Failed. Logging error for future analysis.`);
         }
     }
 }

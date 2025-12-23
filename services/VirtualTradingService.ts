@@ -1,48 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from './supabaseClient';
-import type { MarketTarget } from '../types';
+import type { MarketTarget, VirtualAccount, VirtualPosition, VirtualTradeLog } from '../types';
 import { strategyCommander } from './gemini/StrategyCommander';
-import { marketInfo } from '../marketInfo';
+import { telegramService } from './telegramService'; // Fixed casing
 
-export interface VirtualPosition {
-    ticker: string;
-    stockName: string;
-    avgPrice: number;
-    quantity: number;
-    currentPrice: number;
-    profitRate: number;
-    profitAmount: number;
-    stopLossPrice?: number; // Dynamic Stop Loss
-    maxPriceSinceEntry?: number; // For Trailing Stop
-    pyramidCount?: number; // For Pyramiding limit
-    strategy: 'DAY' | 'SWING' | 'LONG'; // Strategy Tag
-    entryDate?: string;
-}
-
-export interface VirtualTradeLog {
-    id: string;
-    timestamp: number;
-    type: 'BUY' | 'SELL';
-    ticker: string;
-    stockName: string;
-    price: number;
-    quantity: number;
-    amount: number;
-    fee: number;
-    balanceAfter: number;
-    reason?: string;
-    profitLoss?: number; // Added for Kelly Criterion
-}
-
-export interface VirtualAccount {
-    cash: number;
-    totalAsset: number;
-    positions: VirtualPosition[];
-    tradeLogs: VirtualTradeLog[];
-    initialCapital: number;
-}
 
 const STORAGE_KEY = 'jiktoo_shadow_account_v2'; // [RESET] Force fresh start
+
 const FEE_RATE = 0.00015; // 0.015% (업계 최저 수준 가정)
 const SLIPPAGE_RATE = 0.001; // 0.1% (현실적 슬리피지)
 // [RESET] New Initial Capital (User Request)
@@ -75,32 +39,30 @@ class VirtualTradingService {
     private ensureWarChestLines() {
         // 1. Check and Inject KR Capital
         const krCash = this.accounts.KR?.cash ?? 0; // [FIX] Null-safe access
-        if (krCash < DEFAULT_KR_CAPITAL) {
+        if (krCash < 1000) { // If cash is nearly zero or zero
             console.log(`[WarChest] 🇰🇷 Injecting capital for Hell Week: ${krCash.toLocaleString()} -> ${DEFAULT_KR_CAPITAL.toLocaleString()} KRW`);
             this.accounts.KR.cash = DEFAULT_KR_CAPITAL;
-            this.accounts.KR.totalAsset = this.accounts.KR.cash;
             this.accounts.KR.initialCapital = DEFAULT_KR_CAPITAL;
-            this.saveAccount();
+            this.saveAccount('KR'); // [FIX] Save explicit market
         } else if ((this.accounts.KR?.initialCapital ?? 0) < DEFAULT_KR_CAPITAL) {
             // [FIX] Retroactively correct initialCapital if cash was already injected but baseline not updated
             console.log('[WarChest] 🇰🇷 Fixing initialCapital mismatch for accurate ROI.');
             this.accounts.KR.initialCapital = DEFAULT_KR_CAPITAL;
-            this.saveAccount();
+            this.saveAccount('KR'); // [FIX] Save explicit market
         }
 
         // 2. Check and Inject US Capital
         const usCash = this.accounts.US?.cash ?? 0; // [FIX] Null-safe access
-        if (usCash < DEFAULT_US_CAPITAL) {
-            console.log(`[WarChest] 🇺🇸 Injecting capital for Hell Week: $${usCash.toLocaleString()} -> $${DEFAULT_US_CAPITAL.toLocaleString()}`);
+        if (usCash < 10) { // If cash is nearly zero or zero
+            console.log(`[WarChest] 🇺🇸 Injecting capital for Hell Week: $${usCash.toLocaleString()} -> $${DEFAULT_US_CAPITAL.toLocaleString()} `);
             this.accounts.US.cash = DEFAULT_US_CAPITAL;
-            this.accounts.US.totalAsset = this.accounts.US.cash;
             this.accounts.US.initialCapital = DEFAULT_US_CAPITAL;
-            this.saveAccount();
+            this.saveAccount('US'); // [FIX] Save explicit market
         } else if ((this.accounts.US?.initialCapital ?? 0) < DEFAULT_US_CAPITAL) {
             // [FIX] Retroactively correct initialCapital
             console.log('[WarChest] 🇺🇸 Fixing initialCapital mismatch for accurate ROI.');
             this.accounts.US.initialCapital = DEFAULT_US_CAPITAL;
-            this.saveAccount();
+            this.saveAccount('US'); // [FIX] Save explicit market
         }
     }
 
@@ -114,9 +76,9 @@ class VirtualTradingService {
 
     public formatCurrency(amount: number): string {
         if (this.marketTarget === 'US') {
-            return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `;
         } else {
-            return `${Math.floor(amount).toLocaleString()}원`;
+            return `${Math.floor(amount).toLocaleString()} 원`;
         }
     }
 
@@ -161,7 +123,15 @@ class VirtualTradingService {
                     };
                 }
             }
+
+            // [FIX] Ensure capital is injected even if DB returned 0 or low balance
+            this.ensureWarChestLines();
+
             console.log(`[VirtualTrading] Synced accounts. KR Cash: ${this.formatCurrency(this.accounts.KR.cash)}, US Cash: ${this.formatCurrency(this.accounts.US.cash)}`);
+
+            // [Project AWS] Push the injected values back to DB immediately to sync UI
+            await this.saveAccountToDB('KR');
+            await this.saveAccountToDB('US');
 
         } catch (e) {
             console.error('[VirtualTrading] Sync failed:', e);
@@ -175,10 +145,10 @@ class VirtualTradingService {
 
     // ... (Existing Imports)
 
-    private async saveAccountToDB() {
+    private async saveAccountToDB(market: MarketTarget = this.marketTarget) {
         if (!supabase) return;
 
-        const currentAccount = this.getAccount(); // Save CURRENT account
+        const currentAccount = this.accounts[market]; // [FIX] Use requested market
         const meta = {
             cash: currentAccount.cash,
             totalAsset: currentAccount.totalAsset,
@@ -187,86 +157,53 @@ class VirtualTradingService {
 
         // 1. Save to 'portfolios' (Original Logic - Backend)
         await (supabase as any).from('portfolios').upsert({
-            owner: `me_${this.marketTarget}`,
+            owner: `me_${market}`, // [FIX] Use requested market
             positions: currentAccount.positions as any,
             meta: meta as any,
             updated_at: new Date().toISOString()
         });
 
         // 2. [UI SYNC] Sync to 'ai_trader_portfolios' (Frontend Visibility)
-        // [Refactor] Split by Strategy as per User Request (Day/Swing/Long)
+        // [Refactor] Single Unified Portfolio approach
+        // We no longer split into 'aggressive' vs 'balanced'. 
+        // We save the entire state as 'unified'.
 
-        const strategyMap: Record<string, string> = {
-            'DAY': 'aggressive',   // Day Trading -> Aggressive Account
-            'SWING': 'balanced',   // Swing -> Balanced Account
-            'LONG': 'stable'       // Long-term -> Stable Account
+        const uiPortfolioData: any = {
+            initialCapital: currentAccount.initialCapital,
+            cash: currentAccount.cash,
+            holdings: currentAccount.positions.map(p => ({
+                id: crypto.randomUUID(), // Or persistent ID if available
+                ticker: p.ticker,
+                stockName: p.stockName,
+                entryPrice: p.avgPrice,
+                quantity: p.quantity,
+                purchaseTimestamp: p.entryDate,
+                // Pass through strategy tag for UI filtering if needed
+                _strategy: p.strategy
+            })),
+            currentValue: currentAccount.totalAsset, // Total Asset matches current value
+            profitOrLoss: currentAccount.totalAsset - currentAccount.initialCapital,
+            profitOrLossPercent: currentAccount.initialCapital > 0
+                ? ((currentAccount.totalAsset - currentAccount.initialCapital) / currentAccount.initialCapital) * 100
+                : 0,
+            investmentStyle: 'unified'
         };
 
-        const activeStrategies = ['DAY', 'SWING', 'LONG'];
-
-        for (const strat of activeStrategies) {
-            const targetStyle = strategyMap[strat]; // aggressive, balanced, stable
-
-            // Filter positions for this strategy
-            // If strategy is undefined, default to SWING (Balanced)
-            const stratPositions = currentAccount.positions.filter(p => (p.strategy || 'SWING') === strat);
-
-            if (stratPositions.length === 0 && strat !== 'SWING') continue; // Skip empty accounts except default
-
-            // Calculate approximate value for this sub-account
-            const subValue = stratPositions.reduce((sum, p) => sum + (p.currentPrice * p.quantity), 0);
-
-            // Proportional Cash Allocation (Simplified: Split cash evenly or keep central? 
-            // For UI, we'll show "Shared Cash" in Balanced, others 0 for now to avoid double counting)
-            const subCash = strat === 'SWING' ? currentAccount.cash : 0;
-            const subInitial = strat === 'SWING' ? currentAccount.initialCapital : 0;
-
-            const uiPortfolioData: any = {
-                initialCapital: subInitial, // Only show capital in main account logic
-                cash: subCash,
-                holdings: stratPositions.map(p => ({
-                    id: crypto.randomUUID(),
-                    ticker: p.ticker,
-                    stockName: p.stockName,
-                    entryPrice: p.avgPrice,
-                    quantity: p.quantity,
-                    purchaseTimestamp: p.entryDate
-                })),
-                currentValue: subValue + subCash,
-                profitOrLoss: (subValue + subCash) - subInitial,
-                profitOrLossPercent: subInitial > 0 ? (((subValue + subCash) - subInitial) / subInitial) * 100 : 0,
-                investmentStyle: targetStyle
-            };
-
+        try {
             await (supabase as any).from('ai_trader_portfolios').upsert({
-                market: this.marketTarget,
-                style: targetStyle,
+                market: market,
+                style: 'unified', // Fixed style
                 data: uiPortfolioData,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'market, style' });
+
+            // console.log(`[VirtualTrading] Saved Unified Portfolio for ${ market }`);
+        } catch (err) {
+            console.error(`[VirtualTrading] Failed to save Unified Portfolio for ${market}: `, err);
         }
     }
 
     // ... (Existing methods)
-
-    private async executeSell(position: any, price: number, quantity: number, reason: string) {
-        const success = virtualTradingService.sell(position.ticker, price, quantity, reason);
-        if (success) {
-            const amount = price * quantity;
-
-            // [Localization] "SELL" -> "매도"
-            await telegramService.sendTradeReport({
-                action: '매도', // Localized
-                ticker: position.ticker,
-                stockName: position.stockName,
-                quantity: quantity,
-                price: price,
-                amount: amount,
-                reason: reason,
-                confidence: 100
-            });
-        }
-    }
 
     // In buy() method (needs to be updated manually if not in this chunk, 
     // but executeSell is here in AutoPilotService context... wait. 
@@ -299,8 +236,8 @@ class VirtualTradingService {
         }
     }
 
-    private saveAccount() {
-        const currentAccount = this.getAccount();
+    private saveAccount(market: MarketTarget = this.marketTarget) { // [FIX] Support explicit market
+        const currentAccount = this.accounts[market]; // [FIX] Use requested market
 
         // 자산 재계산
         let positionValue = 0;
@@ -311,11 +248,11 @@ class VirtualTradingService {
 
         // 1. Save to LocalStorage
         if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(`${STORAGE_KEY}_${this.marketTarget}`, JSON.stringify(currentAccount));
+            localStorage.setItem(`${STORAGE_KEY}_${market}`, JSON.stringify(currentAccount));
         }
 
         // 2. Save to DB (Background)
-        this.saveAccountToDB().catch(err => console.error('[VirtualTrading] DB Save Error:', err));
+        this.saveAccountToDB(market).catch(err => console.error('[VirtualTrading] DB Save Error:', err));
     }
 
     public getAccount(): VirtualAccount {
@@ -335,12 +272,14 @@ class VirtualTradingService {
     /**
      * 현재가 업데이트 (평가금액 갱신용)
      */
-    public updatePrices(priceMap: { [ticker: string]: number }) {
+    public updatePrices(priceMap: { [ticker: string]: { price: number, isFallback?: boolean } }) {
         const account = this.getAccount();
         let updated = false;
         account.positions.forEach(p => {
             if (priceMap[p.ticker]) {
-                p.currentPrice = priceMap[p.ticker];
+                const data = priceMap[p.ticker];
+                p.currentPrice = data.price;
+                if (data.isFallback !== undefined) p.isFallback = data.isFallback;
 
                 // Update Max Price for Trailing Stop
                 if (!p.maxPriceSinceEntry || p.currentPrice > p.maxPriceSinceEntry) {
@@ -390,7 +329,7 @@ class VirtualTradingService {
         // ⚠️ CRITICAL VALIDATION: Prevent trading with invalid price or quantity
         // ⚠️ CRITICAL VALIDATION: If price is missing, try to fetch it LAST RESORT
         if (!price || price <= 0 || !isFinite(price)) {
-            console.warn(`[VirtualTrading] ⚠️ Invalid price (${price}) detected for ${stockName} (${ticker}). Attempting emergency fetch...`);
+            console.warn(`[VirtualTrading] ⚠️ Invalid price(${price}) detected for ${stockName}(${ticker}).Attempting emergency fetch...`);
 
             // [ENHANCED] Retry emergency fetch up to 3 times
             let fetchSuccess = false;
@@ -841,21 +780,29 @@ class VirtualTradingService {
     /**
      * Sync internal state with actual KIS Account
      */
+    /**
+     * Sync internal state with actual KIS Account
+     */
     public async syncWithKisAccount() {
-        if (!IS_REAL_TRADING_ENABLED) return;
+        // [FIX] Allow sync even in Virtual Mode (for Paper Trading integration)
+        // if (!IS_REAL_TRADING_ENABLED) return;
 
         // [US Market Handling]
         if (this.marketTarget === 'US') {
-            const confirmUS = confirm(`🇺🇸 미국 주식(Paper Trading)을 시작하시겠습니까 ?\n가상 자본금 $${DEFAULT_US_CAPITAL.toLocaleString()}가 설정됩니다.`);
-            if (confirmUS) {
-                const account = this.getAccount();
+            // [Backend Fix] Remove browser 'confirm'. Just apply defaults for US Paper Trading if not already set.
+            // In a deeper implementation, we would call KIS US Balance API here.
+
+            // Temporary: Strict Mock for US until KIS US Balance is fully verified
+            const account = this.getAccount();
+            if (account.cash <= 1) {
                 account.cash = DEFAULT_US_CAPITAL;
                 account.totalAsset = DEFAULT_US_CAPITAL;
                 account.initialCapital = DEFAULT_US_CAPITAL;
-                account.positions = []; // Reset positions for US context
-                console.log(`[VirtualTrading] Applied US Virtual Capital: $${DEFAULT_US_CAPITAL} `);
+                account.positions = [];
+                console.log(`[VirtualTrading] Auto-Applied US Virtual Capital: $${DEFAULT_US_CAPITAL}`);
                 this.saveAccountToDB();
             }
+            // If already capitalized, do nothing or fetch real (TODO)
             return;
         }
 
@@ -880,12 +827,11 @@ class VirtualTradingService {
 
                     // [FALLBACK] 잔고가 1원(오류)이거나 1000원 이하(잔고 없음)인 경우 가상 자본금 적용
                     if (cash <= 1000) {
-                        const confirmVirtual = confirm(`⚠️ 실전 계좌(원화) 잔고가 없거나 조회가 원활하지 않습니다.\n(조회된 예수금: ${cash}원)\n\n가상 자본금 ${DEFAULT_KR_CAPITAL.toLocaleString()}원으로 'Paper Trading'을 시작하시겠습니까?`);
-                        if (confirmVirtual) {
-                            cash = DEFAULT_KR_CAPITAL;
-                            assets = DEFAULT_KR_CAPITAL;
-                            console.log(`[VirtualTrading] Applied Virtual Capital: ${DEFAULT_KR_CAPITAL.toLocaleString()} KRW`);
-                        }
+                        // [Backend Fix] Remove browser 'confirm'. Auto-apply fallback.
+                        console.warn(`⚠️ Real Account Balance Low (${cash} KRW). Switching to Paper Trading Mode.`);
+                        cash = DEFAULT_KR_CAPITAL;
+                        assets = DEFAULT_KR_CAPITAL;
+                        console.log(`[VirtualTrading] Applied Virtual Capital: ${DEFAULT_KR_CAPITAL.toLocaleString()} KRW`);
                     }
 
                     this.getAccount().cash = cash;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { LoadingSpinner } from './LoadingSpinner';
 import { NewsIcon, SendIcon, BrainIcon, LightningIcon, ChevronRightIcon } from './icons';
@@ -31,6 +31,9 @@ export const IntelligenceFlowMonitor = forwardRef<IntelligenceFlowMonitorRef>((p
     const [isLoading, setIsLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+    const isFetching = useRef(false);
+    const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
     const fetchData = async () => {
         if (!supabase) {
             setErrorMsg('Supabase Client Not Initialized');
@@ -38,64 +41,88 @@ export const IntelligenceFlowMonitor = forwardRef<IntelligenceFlowMonitorRef>((p
             return;
         }
 
+        if (isFetching.current) return;
+        isFetching.current = true;
+
+        const fetchWithRetry = async (retries = 3, backoff = 1000): Promise<{ combinedMessages: TelegramMessage[], thoughts: AIThought[] }> => {
+            try {
+                // Extended timeout to 15 seconds to be patient with DB
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('데이터 요청 시간 초과 (15초)')), 15000)
+                );
+
+                const fetchProcess = (async () => {
+                    // 1. Fetch Input Sources
+                    const { data: messages, error: msgError } = await supabase!
+                        .from('telegram_messages')
+                        .select('*')
+                        .order('created_at', { ascending: false })
+                        .limit(10);
+
+                    if (msgError) throw msgError;
+
+                    const { data: briefings, error: brfError } = await supabase!
+                        .from('user_intelligence_briefings')
+                        .select('*')
+                        .order('created_at', { ascending: false })
+                        .limit(5);
+
+                    if (brfError) console.warn('Briefing error:', brfError);
+
+                    const combinedMessages: TelegramMessage[] = [
+                        ...(messages || []).map((m: any) => ({
+                            id: m.id?.toString() || Math.random().toString(),
+                            channel: m.channel || 'Telegram',
+                            text: m.message || m.text || '(No Content)',
+                            date: m.created_at || new Date().toISOString()
+                        })),
+                        ...(briefings || []).map((b: any) => ({
+                            id: b.id?.toString() || Math.random().toString(),
+                            channel: 'BRIEFING',
+                            text: b.content || '(No Content)',
+                            date: b.created_at || new Date().toISOString()
+                        }))
+                    ]
+                        .filter(msg => msg.channel !== 'SYSTEM' && !msg.channel.includes('t.me/SYSTEM'))
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .slice(0, 15);
+
+                    // 2. Fetch AI Thoughts
+                    const { data: thoughts, error: thtError } = await supabase!
+                        .from('ai_thought_logs')
+                        .select('*')
+                        .or('strategy.eq.CONTENT_ANALYSIS,strategy.eq.NEWS_ANALYSIS')
+                        .order('created_at', { ascending: false })
+                        .limit(20);
+
+                    if (thtError) throw thtError;
+
+                    return { combinedMessages, thoughts };
+                })();
+
+                return await Promise.race([fetchProcess, timeoutPromise]) as any;
+            } catch (err) {
+                if (retries > 0) {
+                    console.log(`[Monitor] Fetch failed. Retrying in ${backoff}ms... (${retries} retries left)`);
+                    await new Promise(res => setTimeout(res, backoff));
+                    return fetchWithRetry(retries - 1, backoff * 2);
+                }
+                throw err;
+            }
+        };
+
         try {
             setErrorMsg(null);
-
-            // 1. Fetch Input Sources (Telegram & Briefings)
-            const { data: messages, error: msgError } = await supabase
-                .from('telegram_messages')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(10);
-
-            if (msgError) throw msgError;
-
-            const { data: briefings, error: brfError } = await supabase
-                .from('user_intelligence_briefings')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            if (brfError) console.warn('Briefing error:', brfError);
-
-            // Combine and Sort Inputs
-            const combinedMessages: TelegramMessage[] = [
-                ...(messages || []).map((m: any) => ({
-                    id: m.id?.toString() || Math.random().toString(),
-                    channel: m.channel || 'Telegram',
-                    text: m.message || m.text || '(No Content)',
-                    date: m.created_at || new Date().toISOString()
-                })),
-                ...(briefings || []).map((b: any) => ({
-                    id: b.id?.toString() || Math.random().toString(),
-                    channel: 'BRIEFING',
-                    text: b.content || '(No Content)',
-                    date: b.created_at || new Date().toISOString()
-                }))
-            ]
-                .filter(msg => msg.channel !== 'SYSTEM' && !msg.channel.includes('t.me/SYSTEM')) // Filter out SYSTEM messages
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .slice(0, 15);
-
-            // 2. Fetch ONLY Intelligence-Related Thoughts
-            // This ensures the "Intelligence Flow" is distinct from the general "Thought Stream"
-            const { data: thoughts, error: thtError } = await supabase
-                .from('ai_thought_logs')
-                .select('*')
-                .or('strategy.eq.CONTENT_ANALYSIS,strategy.eq.NEWS_ANALYSIS,message.ilike.%Intel%')
-                .order('created_at', { ascending: false })
-                .limit(20);
-
-            if (thtError) console.warn('Thought fetch error:', thtError);
-
-            setTelegramMessages(combinedMessages);
-            setAIThoughts(thoughts || []);
-
+            const result = await fetchWithRetry();
+            setTelegramMessages(result.combinedMessages);
+            setAIThoughts(result.thoughts || []);
+            setLastUpdated(new Date());
         } catch (error: any) {
-            console.error('Fetch Error:', error);
-            setErrorMsg(error.message || 'Failed to fetch data');
+            console.error('Fetch Error after retries:', error);
+            setErrorMsg(error.message || '데이터를 불러오는 중 오류가 발생했습니다. (재시도 실패)');
         } finally {
             setIsLoading(false);
+            isFetching.current = false;
         }
     };
 
@@ -108,7 +135,7 @@ export const IntelligenceFlowMonitor = forwardRef<IntelligenceFlowMonitorRef>((p
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 5000); // Polling fallback
+        const interval = setInterval(fetchData, 10000); // Polling (relaxed to 10s)
 
         // Real-time subscription
         let channel: any = null;
@@ -116,6 +143,7 @@ export const IntelligenceFlowMonitor = forwardRef<IntelligenceFlowMonitorRef>((p
             channel = supabase.channel('intelligence_flow_monitor')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'telegram_messages' }, () => fetchData())
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ai_thought_logs' }, () => fetchData())
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_intelligence_briefings' }, () => fetchData())
                 .subscribe();
         }
 

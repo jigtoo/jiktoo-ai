@@ -63,14 +63,29 @@ class SniperService {
         }
 
         // 5. PULL THE TRIGGER
-        // We pass the order to VirtualTradingService (which acts as the Broker API Wrapper)
-        const result = await virtualTradingService.buy(target.ticker, target.stockName, target.allocation, priceData.price);
+        // Calculate Quantity based on allocation
+        const quantity = Math.floor(target.allocation / priceData.price);
+        if (quantity <= 0) {
+            console.error(`[Sniper] ❌ Allocation ${target.allocation} insufficient for price ${priceData.price}`);
+            return false;
+        }
 
-        if (result.success) {
+        // Arguments: ticker, stockName, price, quantity, reason, stopLoss, strategy, orderType
+        const success = await virtualTradingService.buy(
+            target.ticker,
+            target.stockName,
+            priceData.price,
+            quantity,
+            `[Sniper] Score: ${target.confidence}`,
+            undefined, // Default stop loss
+            'SWING'    // Default strategy
+        );
+
+        if (success) {
             console.log(`[Sniper] 🎯 HIT! Bought ${target.stockName} at ${priceData.price}`);
             return true;
         } else {
-            console.error(`[Sniper] 💨 MISS! Execution failed: ${result.message}`);
+            console.error(`[Sniper] 💨 MISS! Execution failed for ${target.ticker}`);
             return false;
         }
     }

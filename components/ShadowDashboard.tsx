@@ -4,8 +4,9 @@ import React, { useEffect, useState } from 'react';
 // import { autoPilotService } from '../services/AutoPilotService'; // REMOVED: Backend Service
 import { useAITrader } from '../hooks/useAITrader'; // NEW: Hook
 import { supabase } from '../services/supabaseClient';
-import { marketRegimeService, MarketRegimeStatus } from '../services/MarketRegimeService';
-import { isMockDataEnabled } from '../services/dataService';
+// import { marketRegimeService, MarketRegimeStatus } from '../services/MarketRegimeService'; // REMOVED: Backend Service
+// import { isMockDataEnabled } from '../services/dataService'; // REMOVED: Backend Service (causes 500)
+import { MarketRegimeStatus } from '../types';
 import { SniperTriggerAlert } from './SniperTriggerAlert';
 import { PerformanceDashboard } from './PerformanceDashboard';
 import { TelegramNotificationSettings } from './TelegramNotificationSettings';
@@ -23,72 +24,32 @@ export const ShadowDashboard: React.FC<ShadowDashboardProps> = ({ marketTarget =
     const [isAutoPilotOn, setIsAutoPilotOn] = useState(true); // [Auto-Start] Default to ON
     const [regimeStatus, setRegimeStatus] = useState<MarketRegimeStatus | null>(null);
     const [recentLessons, setRecentLessons] = useState<{ date: string; lesson: string; score: number }[]>([]);
-    const isMock = isMockDataEnabled();
+    const isMock = false; // Default to false in frontend, or fetch from config API if needed
 
     // Use the Hook!
-    const { portfolios, tradeLogs, activeStyle } = useAITrader(marketTarget, null, null);
+    const { portfolio, tradeLogs, activeStyle, allPortfolios } = useAITrader(marketTarget, null, null);
 
-    // Calculate allAccounts for summary
-    const allAccounts = {
-        KR: portfolios['aggressive'] || portfolios['balanced'], // Fallback logic
-        US: portfolios['aggressive'] || portfolios['balanced']  // Ideally hook should return by market, but structure seems mixed.
-        // Checking useAITrader, it returns { portfolios: Record<string, AIPortfolioState> } keyed by style.
-        // It doesn't seem to separate KR/US at the top level of the hook, but marketTarget is passed to the hook.
-        // So 'portfolios' contains data for the CURRENT marketTarget.
-        // To show BOTH KR and US cash, we might need to fetch both or just show current.
-        // For now, let's map current market data to the summary to prevent crash, assuming 'activePortfolio' represents current market.
-    };
+    // [Unified] Use the single confirmed portfolio directly
+    // If portfolio is null (loading or empty), defaults will handle it.
 
-    // Construct "Account" view from hook data
-    // Construct "Account" view from hook data
-    // [Refactor] Aggregate Strategy Accounts (Day/Swing/Long) into one Unified View
-    // This responds to User's request: "One account, multiple strategies"
-
-    // 1. Merge Portfolios (Day=aggressive, Swing=balanced, Long=stable)
-    const dayPortfolio = portfolios['aggressive'];
-    const swingPortfolio = portfolios['balanced'];
-    const longPortfolio = portfolios['stable'];
-
-    // 2. Aggregate Cash & Value
-    const totalCash = (dayPortfolio?.cash || 0) + (swingPortfolio?.cash || 0) + (longPortfolio?.cash || 0);
-    const totalInitial = (dayPortfolio?.initialCapital || 0) + (swingPortfolio?.initialCapital || 0) + (longPortfolio?.initialCapital || 0);
-    const totalValue = (dayPortfolio?.currentValue || 0) + (swingPortfolio?.currentValue || 0) + (longPortfolio?.currentValue || 0);
-
-    // 3. Aggregate Positions
-    const allPositions = [
-        ...(dayPortfolio?.holdings || []).map(h => ({ ...h, _strategy: 'DAY' })),
-        ...(swingPortfolio?.holdings || []).map(h => ({ ...h, _strategy: 'SWING' })),
-        ...(longPortfolio?.holdings || []).map(h => ({ ...h, _strategy: 'LONG' }))
-    ];
-
-    // 4. Aggregate Logs
-    const allLogs = [
-        ...(tradeLogs['aggressive'] || []),
-        ...(tradeLogs['balanced'] || []),
-        ...(tradeLogs['stable'] || [])
-    ].sort((a, b) => b.timestamp - a.timestamp);
-
-    // Fallback: If everything empty, default to zero (or use aggressive if that was the only one initialized)
-    // Note: If totalInitial is 0, we might default to standard capital to avoid divide by zero in UI
-    const saneInitial = totalInitial > 0 ? totalInitial : 50000000;
+    // Fallback constants
+    const DEFAULT_CAPITAL = marketTarget === 'KR' ? 50000000 : 30000;
 
     const account: VirtualAccount = {
-        cash: totalCash || saneInitial, // Default cash if uninitialized
-        totalAsset: totalValue || saneInitial,
-        positions: allPositions.map(h => ({
+        cash: portfolio?.cash ?? DEFAULT_CAPITAL,
+        totalAsset: portfolio?.currentValue ?? DEFAULT_CAPITAL,
+        positions: (portfolio?.holdings || []).map(h => ({
             ticker: h.ticker,
-            ticker: h.ticker,
-            stockName: (h.stockName && h.stockName !== h.ticker) ? h.stockName : enhanceStockName(h.ticker),
+            stockName: (h.stockName && h.stockName !== h.ticker) ? h.stockName : enhanceStockName(h.ticker, h.ticker),
             avgPrice: h.entryPrice,
             quantity: h.quantity,
-            currentPrice: h.entryPrice, // Hook gives entry, need current? Hook actually gives Realtime usually if updated.
-            // checking useAITrader hook... it maps DB to UI. 
-            // We assume specific Strategy Tag based on source portfolio
+            currentPrice: h.currentPrice || h.entryPrice, // Use real-time price if available
             profitRate: 0,
             profitAmount: 0,
-            strategy: (h as any)._strategy as 'DAY' | 'SWING' | 'LONG'
+            strategy: (h as any)._strategy as 'DAY' | 'SWING' | 'LONG' || 'SWING',
+            isFallback: h.isFallback // [New] Propagate fallback status
         })),
-        tradeLogs: allLogs.map(l => ({
+        tradeLogs: tradeLogs.map(l => ({
             id: l.id,
             timestamp: new Date(l.timestamp).getTime(),
             type: l.type as 'BUY' | 'SELL',
@@ -101,18 +62,55 @@ export const ShadowDashboard: React.FC<ShadowDashboardProps> = ({ marketTarget =
             balanceAfter: 0,
             reason: l.reason
         })),
-        initialCapital: saneInitial
+        initialCapital: portfolio?.initialCapital ?? DEFAULT_CAPITAL
     };
 
-    useEffect(() => {
-        // Regime handling stays
-        marketRegimeService.analyzeCurrentRegime(marketTarget).then(setRegimeStatus);
-        const interval = setInterval(() => {
-            const status = marketRegimeService.getLastStatus(marketTarget);
-            if (status) setRegimeStatus(status);
-        }, 5000);
+    // For "Global War Chest" - Uses data fetched for BOTH markets
+    const allAccounts = {
+        KR: allPortfolios?.KR || null,
+        US: allPortfolios?.US || null
+    };
 
-        // Fetch AI Lessons
+    // [FRONTEND FIX] Fetch Regime Status from DB instead of backend service
+    useEffect(() => {
+        if (!supabase) return;
+
+        const fetchRegime = async () => {
+            const { data, error } = await supabase
+                .from('market_regime_logs')
+                .select('*')
+                .eq('market', marketTarget)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (data) {
+                const row = data as any;
+                setRegimeStatus({
+                    regime: row.regime,
+                    score: row.score,
+                    confidence: row.confidence,
+                    factors: row.factors,
+                    detailedFactors: row.detailed_factors,
+                    recommendedExposure: row.recommended_exposure,
+                    timestamp: new Date(row.created_at).getTime(),
+                } as MarketRegimeStatus);
+            }
+        };
+
+        fetchRegime();
+
+        // Poll every 30s
+        const interval = setInterval(fetchRegime, 30000);
+
+        // Optional: Realtime subscription
+        const channel = supabase.channel('regime_changes')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'market_regime_logs' }, payload => {
+                if (payload.new.market === marketTarget) fetchRegime();
+            })
+            .subscribe();
+
+        // Fetch AI Lessons (Moved inside)
         const fetchLessons = async () => {
             if (!supabase) return;
             const { data } = await supabase
@@ -131,7 +129,10 @@ export const ShadowDashboard: React.FC<ShadowDashboardProps> = ({ marketTarget =
         };
         fetchLessons();
 
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            supabase.removeChannel(channel);
+        };
     }, [marketTarget]);
 
     const toggleAutoPilot = async () => {
@@ -398,7 +399,14 @@ export const ShadowDashboard: React.FC<ShadowDashboardProps> = ({ marketTarget =
                                             <td className="p-3 font-bold">{formatStockDisplay(enhanceStockName(p.stockName, p.ticker), p.ticker)}</td>
                                             <td className="p-3">{p.quantity}주</td>
                                             <td className="p-3">{Math.floor(p.avgPrice).toLocaleString()}</td>
-                                            <td className="p-3">{p.currentPrice.toLocaleString()}</td>
+                                            <td className="p-3">
+                                                {p.currentPrice.toLocaleString()}
+                                                {p.isFallback && (
+                                                    <span className="ml-1 text-[10px] bg-yellow-600 text-white px-1.5 py-0.5 rounded cursor-help" title="Data is from Daily Close (Yesterday) due to permission limits.">
+                                                        🕒
+                                                    </span>
+                                                )}
+                                            </td>
                                             <td className={`p-3 font-bold ${p.profitRate >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
                                                 {p.profitRate > 0 ? '+' : ''}{p.profitRate.toFixed(2)}%
                                             </td>

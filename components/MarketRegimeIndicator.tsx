@@ -75,9 +75,9 @@ export const MarketRegimeIndicator: React.FC<MarketRegimeIndicatorProps> = ({ st
 
     return (
         <div className={`bg-gray-800 rounded-lg border-2 ${getRegimeColor()}`}>
-            {/* Header */}
-            <div className="p-4">
-                <div className="flex items-center justify-between mb-2">
+            {/* Header - Compact */}
+            <div className="p-3">
+                <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                         <span className="text-2xl">{getRegimeIcon()}</span>
                         <div>
@@ -91,38 +91,44 @@ export const MarketRegimeIndicator: React.FC<MarketRegimeIndicatorProps> = ({ st
                     </div>
                     <div className="text-right">
                         <div className="text-2xl font-mono font-bold">{status.score}점</div>
-                        <div className="text-xs text-gray-500">{status.lastUpdated}</div>
+                        {/* <div className="text-xs text-gray-500">{status.lastUpdated}</div> */}
                     </div>
                 </div>
 
-                {/* Confidence & Data Quality */}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div className="bg-gray-700/30 p-2 rounded border border-gray-700">
-                        <div className="text-gray-400 text-xs mb-1">AI 신뢰도</div>
-                        <div className={`font-bold text-sm ${getConfidenceColor()}`}>
-                            {status.confidence}% ({getConfidenceLabel()})
-                        </div>
-                    </div>
-                    <div className="bg-gray-700/30 p-2 rounded border border-gray-700">
-                        <div className="text-gray-400 text-xs mb-1">데이터 품질</div>
-                        <div className="font-bold text-sm text-gray-300">
-                            {getDataQualityIcon()} {status.dataQuality}
-                        </div>
-                    </div>
+                {/* Simple One-Line Status (New) - instead of bulky grid */}
+                <div className="flex items-center gap-3 mt-2 text-xs">
+                    <span className="text-gray-400">신뢰도: <span className={`${getConfidenceColor()} font-bold`}>{status.confidence}%</span></span>
+                    <span className="text-gray-500">|</span>
+                    <span className="text-gray-400">데이터: <span className="text-gray-300">{status.dataQuality}</span></span>
                 </div>
 
-                {/* Expand/Collapse Button */}
+                {/* Expand Button */}
                 <button
                     onClick={() => setIsExpanded(!isExpanded)}
-                    className="w-full text-center text-xs text-cyan-400 hover:text-cyan-300 py-1 rounded hover:bg-gray-700/50 transition-all"
+                    className="w-full text-center text-[10px] text-cyan-400/70 hover:text-cyan-300 mt-1"
                 >
-                    {isExpanded ? '▲ 상세 근거 숨기기' : '▼ 상세 근거 보기'}
+                    {isExpanded ? '▲ 접기' : '▼ 근거 보기'}
                 </button>
             </div>
 
             {/* Detailed Factors (Expandable) */}
             {isExpanded && (
                 <div className="px-4 pb-4 border-t border-gray-700 pt-3 space-y-3">
+                    {/* Detailed Metrics Grid (Moved Here) */}
+                    <div className="grid grid-cols-2 gap-3 mb-2">
+                        <div className="bg-gray-700/30 p-2 rounded border border-gray-700">
+                            <div className="text-gray-400 text-xs mb-1">AI 신뢰도</div>
+                            <div className={`font-bold text-sm ${getConfidenceColor()}`}>
+                                {status.confidence}% ({getConfidenceLabel()})
+                            </div>
+                        </div>
+                        <div className="bg-gray-700/30 p-2 rounded border border-gray-700">
+                            <div className="text-gray-400 text-xs mb-1">데이터 품질</div>
+                            <div className="font-bold text-sm text-gray-300">
+                                {getDataQualityIcon()} {status.dataQuality}
+                            </div>
+                        </div>
+                    </div>
                     {/* Positive Factors */}
                     {status.detailedFactors.positive.length > 0 && (
                         <div>

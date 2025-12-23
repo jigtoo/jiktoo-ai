@@ -278,5 +278,45 @@ export const STRATEGY_PRESETS: StrategyPreset[] = [
                 { id: 'new_high', type: 'PRICE', indicator: 'Close', params: [], operator: '>=', comparisonType: 'INDICATOR', comparisonValue: 'Highest(250)' }
             ]
         }
+    },
+    // [WIDE SCAN] Relaxed Minervini for Watchlist Building
+    {
+        id: 'MINERVINI_WATCHLIST',
+        name: 'Minervini Watchlist (Wide Scan)',
+        description: '미너비니 조건의 완화 버전. 상승 추세(50일 > 200일)에 있으며 신고가 근처(25%)에 있는 모든 후보군을 포착합니다.',
+        author: 'Mark Minervini (Relaxed)',
+        logic: {
+            id: 'root_minervini_relaxed',
+            type: 'GROUP',
+            operator: 'AND',
+            children: [
+                // 1. Medium Trend Up: 50 MA > 150 MA
+                { id: 'sma50_gt_sma150', type: 'INDICATOR', indicator: 'SMA', params: [{ name: 'period', value: 50 }], operator: '>', comparisonType: 'INDICATOR', comparisonValue: 'SMA(150)' },
+                // 2. Long Trend Up: Price > 200 MA
+                { id: 'price_gt_sma200', type: 'PRICE', indicator: 'Close', params: [], operator: '>', comparisonType: 'INDICATOR', comparisonValue: 'SMA(200)' },
+                // 3. Near Highs: Price >= 52-week High * 0.75 (Within 25%)
+                { id: 'near_high', type: 'PRICE', indicator: 'Close', params: [], operator: '>=', comparisonType: 'INDICATOR', comparisonValue: 'Highest(250) * 0.75' }
+            ]
+        }
+    },
+    // [AI INSIGHT] Volume Dry-Up (Silent Accumulation)
+    {
+        id: 'VOLUME_DRY_UP',
+        name: 'Volume Dry-Up (폭풍 전야)',
+        description: '급등 전 거래량이 말라붙는 "개미 털기" 구간을 포착합니다. 변동성이 축소되며 주요 지지선을 지킬 때 유효합니다.',
+        author: 'Jiktoo AI',
+        logic: {
+            id: 'root_dry_up',
+            type: 'GROUP',
+            operator: 'AND',
+            children: [
+                // 1. Low Volatility: Range is small (< 3% of Open)
+                // { id: 'low_volatility', type: 'PRICE', indicator: 'High', params: [], operator: '<', comparisonType: 'INDICATOR', comparisonValue: 'Low * 1.03' },
+                // 2. Volume Dry Up: Volume < SMA(Volume, 20) * 0.6 (60% of average)
+                { id: 'vol_dry', type: 'INDICATOR', indicator: 'Volume', params: [], operator: '<', comparisonType: 'INDICATOR', comparisonValue: 'SMA(Volume, 20) * 0.6' },
+                // 3. Trend Support: Price > SMA(50)
+                { id: 'trend_support', type: 'PRICE', indicator: 'Close', params: [], operator: '>', comparisonType: 'INDICATOR', comparisonValue: 'SMA(50)' }
+            ]
+        }
     }
 ];

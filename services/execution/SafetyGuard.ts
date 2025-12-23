@@ -96,6 +96,28 @@ class SafetyGuard {
         // Here, we check the connector status.
         return true; // Mocked for now, assuming connectivity is handled by WS service
     }
+
+    /**
+     * [Protocol 4] Toxic Asset Filter
+     * Reject stocks that are financially dangerous or manipulated.
+     */
+    public isToxicAsset(stockName: string, price: number): { isToxic: boolean; reason?: string } {
+        // 1. Administrative Issues (Name Check)
+        const dangerKeywords = ['관리', '정지', '환기', '투자주의', 'SPAC', '스팩'];
+        for (const kw of dangerKeywords) {
+            if (stockName.includes(kw)) {
+                return { isToxic: true, reason: `Admin Issue (${kw})` };
+            }
+        }
+
+        // 2. Ultra-Penny Stock (Price < 500 KRW)
+        // Too volatile and prone to manipulation
+        if (price < 500 && price > 0) {
+            return { isToxic: true, reason: 'Ultra-low Price (< 500 KRW)' };
+        }
+
+        return { isToxic: false };
+    }
 }
 
 export const safetyGuard = new SafetyGuard();

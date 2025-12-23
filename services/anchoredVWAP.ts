@@ -1,4 +1,4 @@
-﻿// services/anchoredVWAP.ts
+// services/anchoredVWAP.ts
 /**
  * Anchored VWAP (Volume Weighted Average Price) Service
  * Calculates institutional average price from key anchor points
@@ -19,8 +19,8 @@ export async function calculateAnchoredVWAP(
 ): Promise<AnchoredVWAP[]> {
 
     const marketInfo = {
-        KR: { name: '?쒓뎅 ?쒖옣', currency: 'KRW' },
-        US: { name: '誘멸뎅 ?쒖옣', currency: 'USD' }
+        KR: { name: '?�국 ?�장', currency: 'KRW' },
+        US: { name: '미국 ?�장', currency: 'USD' }
     };
 
     const prompt = `
@@ -63,13 +63,13 @@ ${tickers.map(ticker => `- ${ticker}`).join('\n')}
    - Find current stock price
 
 2. **VWAP Calculation (Conceptual)**:
-   - Sum of (Price 횞 Volume) from anchor date to present / Sum of Volume
+   - Sum of (Price × Volume) from anchor date to present / Sum of Volume
    - Since actual calculation is not possible, estimate as midpoint between anchor price and current price
 
 3. **Support/Resistance Determination**:
    - Current Price > VWAP: VWAP acts as support (isSupport = true)
    - Current Price < VWAP: VWAP acts as resistance (isSupport = false)
-   - Current price near VWAP (짹2%): priceAction = 'approaching'
+   - Current price near VWAP (±2%): priceAction = 'approaching'
    - Bouncing from VWAP: priceAction = 'bouncing'
    - Breaking through VWAP: priceAction = 'breaking'
 
@@ -80,7 +80,7 @@ ${tickers.map(ticker => `- ${ticker}`).join('\n')}
 
 5. **Confidence Calculation**:
    - Based on Strength
-   - Higher confidence when current price is closer to VWAP (짹5% = high confidence)
+   - Higher confidence when current price is closer to VWAP (±5% = high confidence)
 
 ## Output Format
 
@@ -114,7 +114,7 @@ Exclude stocks with no valid anchor points.
 
     try {
         const response = await generateContentWithRetry({
-            model: 'gemini-1.5-flash',
+            model: 'gemini-2.0-flash-001',
             contents: prompt,
             config: {
                 // responseMimeType: 'application/json', // Conflits with tools

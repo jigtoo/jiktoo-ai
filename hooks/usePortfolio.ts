@@ -104,6 +104,33 @@ export const usePortfolio = (marketTarget: MarketTarget) => {
 
     useEffect(() => {
         const fetchPortfolioFromDB = async () => {
+            // 1. Try LocalStorage first (fastest)
+            const localPortfolioKey = `jiktoo_portfolio_${marketTarget}`;
+            const localCashKey = `jiktoo_portfolio_cash_${marketTarget}`;
+            const localPortfolio = localStorage.getItem(localPortfolioKey);
+            const localCash = localStorage.getItem(localCashKey);
+
+            if (localPortfolio && localCash) {
+                try {
+                    const items = JSON.parse(localPortfolio);
+                    const cash = parseFloat(localCash);
+                    console.log(`[Portfolio] Loaded from LocalStorage (${marketTarget}):`, items.length, 'items');
+                    setMarketStates(prev => ({
+                        ...prev,
+                        [marketTarget]: {
+                            ...prev[marketTarget],
+                            portfolioItems: items.map((i: any) => ({ ...i, executionStatus: 'idle' })),
+                            portfolioCash: cash
+                        }
+                    }));
+                    handleFetchPortfolioAnalysis(items, cash, marketTarget);
+                    return; // Use LocalStorage data
+                } catch (e) {
+                    console.warn('[Portfolio] Failed to parse LocalStorage data:', e);
+                }
+            }
+
+            // 2. Fallback to Supabase
             if (!supabase) {
                 console.warn("Supabase not available, portfolio will not be persisted.");
                 handleFetchPortfolioAnalysis(initialMarketState(marketTarget).portfolioItems, initialMarketState(marketTarget).portfolioCash, marketTarget);
@@ -134,7 +161,7 @@ export const usePortfolio = (marketTarget: MarketTarget) => {
                         setTimeout(() => {
                             subscription.unsubscribe();
                             reject(new Error("Authentication timed out."));
-                        }, 5000);
+                        }, 15000); // Increased from 5000 to 15000ms
                     });
                 }
 

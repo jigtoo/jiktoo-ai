@@ -1,10 +1,10 @@
-// copy-of-sepa-ai/hooks/useAlphaLink.ts
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MarketTarget, StrategyPlaybook, RealtimeSignal, UserWatchlistItem, BFLSignal, DetectedMaterial, ChartPatternResult, SupplyEagleSignal } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { USE_REALTIME_ALPHA, REALTIME_DEBOUNCE_MS, REALTIME_WINDOW_MS } from '../config';
 import { generatePlaybooksForWatchlist } from '../services/gemini/alphaEngineService';
 import { scannerHub } from '../services/discovery/ScannerHubService'; // [Architecture 2.0] Discovery Engine
+import { fetchLatestPrice } from '../services/dataService';
 import { generateAndSave as generateOracleBriefing } from '../services/gemini/marketLogicService';
 // FIX: Add missing import for RealtimePostgresChangesPayload
 // import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
@@ -38,6 +38,7 @@ export const useAlphaLink = (
     const signalBuffer = useRef<Map<string, SignalGroup>>(new Map());
     const processingTimer = useRef<number | null>(null);
     const [isGlobalScanning, setIsGlobalScanning] = useState(false);
+    const [scanProgress, setScanProgress] = useState<string>(''); // NEW: Real-time progress message
 
     // Load existing playbooks from DB on mount
     const storageKey = `jiktoo_playbooks_v3_${marketTarget}`; // Version bumped to clear stale mock data
@@ -116,16 +117,16 @@ export const useAlphaLink = (
                                     strategySummary: `[종가배팅] ${sig.rationale}`,
                                     aiConfidence: sig.aiConfidence,
                                     keyLevels: {
-                                        entry: sig.currentPrice.replace(/[^0-9.]/g, ''),
-                                        target: (parseFloat(sig.currentPrice.replace(/[^0-9.]/g, '')) * 1.05).toFixed(0),
-                                        stopLoss: (parseFloat(sig.currentPrice.replace(/[^0-9.]/g, '')) * 0.98).toFixed(0)
+                                        entry: sig.currentPrice ? sig.currentPrice.replace(/[^0-9.]/g, '') : '0',
+                                        target: sig.currentPrice ? (parseFloat(sig.currentPrice.replace(/[^0-9.]/g, '')) * 1.05).toFixed(0) : '0',
+                                        stopLoss: sig.currentPrice ? (parseFloat(sig.currentPrice.replace(/[^0-9.]/g, '')) * 0.98).toFixed(0) : '0'
                                     },
                                     strategyType: 'SwingTrade',
-                                    analysisChecklist: sig.keyMetrics.map(m => ({
+                                    analysisChecklist: Array.isArray(sig.keyMetrics) ? sig.keyMetrics.map(m => ({
                                         criterion: m.name,
                                         isMet: m.isPass,
                                         details: m.value
-                                    })),
+                                    })) : [],
                                     isUserRecommended: false,
                                     addedAt: new Date().toISOString(),
                                     source: 'gemini'
@@ -214,9 +215,17 @@ export const useAlphaLink = (
 
             console.log('[AlphaLink] Attempting to save', records.length, 'playbooks to Supabase...');
 
+            // Deduplicate records by 'id' to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+            // This happens if the batch contains multiple records with the same ID.
+            const uniqueRecords = Array.from(new Map(records.map(item => [item.id, item])).values());
+
+            if (uniqueRecords.length < records.length) {
+                console.warn(`[AlphaLink] Found ${records.length - uniqueRecords.length} duplicates in batch. Removed.`);
+            }
+
             const { error } = await supabase
                 .from('alpha_engine_playbooks')
-                .upsert(records, {
+                .upsert(uniqueRecords as any, {
                     onConflict: 'id',
                     ignoreDuplicates: false // Ensure updates happen
                 });
@@ -357,6 +366,12 @@ export const useAlphaLink = (
 
         setIsGlobalScanning(true);
         setError(null);
+
+        // [Fixture] Clear Cache & State to force fresh results
+        console.log('[AlphaLink] Clearing cache for fresh scan...');
+        setPlaybooks([]);
+        localStorage.removeItem(`jiktoo_playbooks_v3_${marketTarget}`);
+
         try {
             const candidates: { ticker: string; stockName: string; rationale: string; }[] = [];
 
@@ -378,25 +393,23 @@ export const useAlphaLink = (
             for (const item of watchlistItems.filter(item => isMarketMatch(item.ticker))) {
                 try {
                     // Fetch real-time price data for quality check
-                    const priceData = await scannerTools.fetchStockPrice(item.ticker, marketTarget);
+                    const priceData = await fetchLatestPrice(item.ticker, item.stockName, marketTarget);
 
                     let qualityScore = 50; // Base score
 
-                    if (priceData) {
+                    if (priceData && priceData.price > 0) {
                         // Check 1: Volume (50K+ shares daily)
-                        const volume = parseInt(priceData.volume?.replace(/,/g, '') || '0');
-                        if (volume >= 50000) qualityScore += 20;
+                        if (priceData.volume >= 50000) qualityScore += 20;
 
                         // Check 2: Not crashing (> -10% weekly)
-                        const changeRate = parseFloat(priceData.changeRate?.replace('%', '') || '0');
-                        if (changeRate > -10) {
+                        if (priceData.changeRate > -10) {
                             qualityScore += 20;
                         } else {
                             qualityScore -= 30; // Heavy penalty for crashing stocks
                         }
 
                         // Check 3: Positive momentum
-                        if (changeRate > 0) qualityScore += 10;
+                        if (priceData.changeRate > 0) qualityScore += 10;
                     }
 
                     if (qualityScore >= MIN_QUALITY_SCORE) {
@@ -436,14 +449,29 @@ export const useAlphaLink = (
                 .filter(eagle => isMarketMatch(eagle.ticker))
                 .forEach(eagle => candidates.push({ ticker: eagle.ticker, stockName: eagle.stockName, rationale: `수급 독수리: ${eagle.rationale}` }));
 
-            // NEW: AI Quant Screener Signals
-            (aiQuantSignals || [])
-                .filter(signal => isMarketMatch(signal.ticker))
-                .forEach(signal => candidates.push({
+            // NEW: AI Quant Screener Signals (Smart Filter)
+            const quantSignals = (aiQuantSignals || []).filter(signal => isMarketMatch(signal.ticker));
+
+            // 1. "명예의 전당" 종목은 무조건 포함 (Prioritize Hall of Fame)
+            const hofSignals = quantSignals.filter(s => s.strategyName?.includes('명예의 전당') || s.rationale?.includes('명예의 전당'));
+
+            // 2. 나머지는 점수순으로 상위 5개만 (Limit others to prevent timeout)
+            const otherSignals = quantSignals
+                .filter(s => !hofSignals.includes(s))
+                .sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0))
+                .slice(0, 5);
+
+            // 3. 합치기
+            [...hofSignals, ...otherSignals].forEach(signal => {
+                const isHOF = signal.strategyName?.includes('명예의 전당') || signal.rationale?.includes('명예의 전당');
+                const tag = isHOF ? '🏆 명예의 전당' : 'AI 퀀트';
+
+                candidates.push({
                     ticker: signal.ticker,
                     stockName: signal.stockName,
-                    rationale: `AI 퀀트: ${signal.rationale} (점수: ${signal.aiScore || 80})`
-                }));
+                    rationale: `${tag}: ${signal.rationale} (점수: ${signal.aiScore || 80})`
+                });
+            });
 
             const uniqueCandidates = Array.from(new Map(candidates.map(item => [item.ticker, item])).values());
 
@@ -463,7 +491,18 @@ export const useAlphaLink = (
             const now = new Date();
             const hour = now.getHours();
             const minute = now.getMinutes();
-            const isMorningBriefingTime = hour === 8 && minute >= 30 && minute < 60; // 08:30 ~ 08:59
+
+            // Morning Briefing Logic (Autonomously triggers at market open)
+            let isMorningBriefingTime = false;
+
+            if (marketTarget === 'KR') {
+                // KR Market Open: 09:00 -> Briefing at 08:30
+                isMorningBriefingTime = hour === 8 && minute >= 30 && minute < 60;
+            } else {
+                // US Market Open: 23:30 (Winter) or 22:30 (Summer)
+                // Trigger between 22:30 ~ 23:59 to cover both cases safely
+                isMorningBriefingTime = (hour === 22 && minute >= 30) || hour === 23;
+            }
             const isCloseBettingTime = hour === 15 && minute >= 0 && minute <= 20; // 15:00 ~ 15:20
 
             console.log(`[AlphaLink] Conviction Scanner Activated. Time: ${hour}:${minute}`);
@@ -518,27 +557,72 @@ export const useAlphaLink = (
 
             if (uniqueCandidates.length === 0) {
                 console.warn('[AlphaLink] No candidates found even after active scan. Keeping existing playbooks.');
+                setIsGlobalScanning(false); // FIX: Clear loading state before early return
                 alert('현재 시장에서 포착된 특이 종목이 없습니다.\n\n[제안]\n1. 잠시 후 다시 시도해보세요.\n2. 관심종목에 종목을 추가하여 분석 범위를 넓혀보세요.\n\n기존 플레이북은 유지됩니다.');
                 return;
             }
 
             console.log('[AlphaLink] Generating playbooks for', uniqueCandidates.length, 'candidates...');
             console.log('[AlphaLink] Candidate details:', uniqueCandidates);
-            const newPlaybooks = await generatePlaybooksForWatchlist(uniqueCandidates, marketTarget);
-            console.log('[AlphaLink] Generated', newPlaybooks.length, 'playbooks');
-            console.log('[AlphaLink] Playbook details:', newPlaybooks);
 
-            // CRITICAL FIX: Only save and update if we actually generated playbooks
-            if (newPlaybooks.length === 0) {
-                console.warn('[AlphaLink] Gemini returned 0 playbooks. This may indicate an API issue or filtering. Keeping existing playbooks.');
-                alert('⚠️ AI가 플레이북을 생성하지 못했습니다.\n\n가능한 원인:\n1. Gemini API 응답 문제\n2. 종목이 전략 기준을 충족하지 못함\n\n기존 플레이북은 유지됩니다.');
-                return;
-            }
+            // Safety Timeout Wrapper (Increased to 5 minutes for deep scans)
+            const generateWithTimeout = async () => {
+                const timeoutPromise = new Promise<any>((_, reject) =>
+                    setTimeout(() => reject(new Error('Global Scan Timed Out (Client Side safety)')), 300000)
+                );
+
+                const processChunks = async () => {
+                    const BATCH_SIZE = 5; // Process 5 candidates at a time
+                    const allPlaybooks: StrategyPlaybook[] = [];
+                    const chunks = [];
+
+                    for (let i = 0; i < uniqueCandidates.length; i += BATCH_SIZE) {
+                        chunks.push(uniqueCandidates.slice(i, i + BATCH_SIZE));
+                    }
+
+                    console.log(`[AlphaLink] Processing ${uniqueCandidates.length} candidates in ${chunks.length} chunks...`);
+
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunk = chunks[i];
+                        // Update Progress Message if available
+                        if (setScanProgress) {
+                            setScanProgress(`AI 분석 중... (${i * BATCH_SIZE} / ${uniqueCandidates.length})`);
+                        }
+
+                        console.log(`[AlphaLink] Processing Chunk ${i + 1}/${chunks.length} (${chunk.length} items)`);
+
+                        try {
+                            const result = await generatePlaybooksForWatchlist(chunk, marketTarget);
+                            allPlaybooks.push(...result);
+                        } catch (chunkError) {
+                            console.error(`[AlphaLink] Chunk ${i + 1} failed:`, chunkError);
+                            // Continue to next chunk even if one fails
+                        }
+
+                        // Small breathing room for browser
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+
+                    return allPlaybooks;
+                };
+
+                return Promise.race([
+                    processChunks(),
+                    timeoutPromise
+                ]);
+            };
+
+            const newPlaybooks = await generateWithTimeout();
+
+            // Clear progress message
+            if (setScanProgress) setScanProgress('');
+
+            console.log('[AlphaLink] Generated', newPlaybooks.length, 'playbooks');
 
             // NEW: Manually map sources from candidates to newPlaybooks
             // Since generatePlaybooksForWatchlist might not preserve 'sourceScanner' in a structured way (only in text),
             // we patch it here to ensure UI tags appear.
-            const enhancedPlaybooks = newPlaybooks.map(pb => {
+            const enhancedPlaybooks = newPlaybooks.map((pb: StrategyPlaybook) => {
                 const candidate = uniqueCandidates.find(c => c.ticker === pb.ticker);
                 if (candidate) {
                     // Extract source from rationale if formatted as "[Source] ..."
@@ -556,12 +640,12 @@ export const useAlphaLink = (
                 return pb;
             });
 
-            // Save to DB
-            await savePlaybooksToDB(enhancedPlaybooks);
+            // Save to DB (Fire and Forget)
+            savePlaybooksToDB(enhancedPlaybooks).catch(err => console.error('[AlphaLink] Background save failed:', err));
 
             setPlaybooks(prev => {
                 const updatedPlaybooks = [...prev];
-                enhancedPlaybooks.forEach(newBook => {
+                enhancedPlaybooks.forEach((newBook: StrategyPlaybook) => {
                     const existingIndex = updatedPlaybooks.findIndex(p => p.ticker === newBook.ticker);
                     if (existingIndex > -1) {
                         updatedPlaybooks[existingIndex] = newBook;
@@ -597,5 +681,6 @@ export const useAlphaLink = (
         forceGlobalScan,
         isGlobalScanning,
         loadSampleData,
+        scanProgress,
     };
 };

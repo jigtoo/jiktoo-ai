@@ -98,21 +98,32 @@ class QuantScreenerScheduler {
                 return;
             }
 
+
             // Save to Supabase
             if (supabase) {
                 console.log(`[QuantScheduler] 💾 Saving ${allResults.length} candidates to Playbook...`);
+                // Using upsert to avoid duplicates
+                const { error } = await supabase.from('alpha_engine_playbooks').upsert(allResults as any, { onConflict: 'ticker, market, strategy_name' });
+                if (error) console.error('[QuantScheduler] DB Save Error:', error);
+                else console.log(`[QuantScheduler] ✅ Playbook updated successfully.`);
 
-                // Using upsert to avoid duplicates if same stock found multiple times
-                // Assuming (market, ticker, scan_type) unique constraint or just insert
-                // For simplicity, we filter existance or just insert. 
-                // Creating a simplified list for insertion
+                // [NEW] Sync with Sniper Trigger Service (Auto-Targeting)
+                // Filter for High Conviction candidates to actively monitor
+                const sniperCandidates = allResults.filter(r => (r.key_factors[2]?.includes('Score: 8') || r.key_factors[2]?.includes('Score: 9') || (r.pattern_name && r.pattern_name.includes('Conviction'))));
 
-                const { error } = await supabase.from('alpha_engine_playbooks').insert(allResults as any);
+                if (sniperCandidates.length > 0) {
+                    const { sniperTriggerService } = await import('../SniperTriggerService');
+                    console.log(`[QuantScheduler] 🎯 Forwarding ${sniperCandidates.length} High-Conviction targets to Sniper...`);
 
-                if (error) {
-                    console.error('[QuantScheduler] DB Save Error:', error);
-                } else {
-                    console.log(`[QuantScheduler] ✅ Playbook updated successfully.`);
+                    sniperCandidates.forEach(candidate => {
+                        sniperTriggerService.addToWatchlist(
+                            candidate.ticker,
+                            candidate.stock_name,
+                            `Quant: ${candidate.pattern_name}`,
+                            85, // Initial Score for Sniper
+                            'WATCHING'
+                        );
+                    });
                 }
             } else {
                 console.warn('[QuantScheduler] Supabase client missing. Cannot save.');

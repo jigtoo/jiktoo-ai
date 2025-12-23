@@ -127,7 +127,8 @@ export const useDayTrader = (marketTarget: MarketTarget, watchlist: UserWatchlis
         };
 
         ws.onerror = (event) => {
-            console.error('[DayTrader] WebSocket Error:', event);
+            // Silent error - WebSocket is optional for real-time updates
+            // console.log('[DayTrader] WebSocket optional service not available');
             ws.close();
         };
 

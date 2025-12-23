@@ -1,128 +1,81 @@
 import { generateContentWithRetry } from './client';
-import { selectModelByTask } from './modelSelector';
 
 export interface CommanderDecision {
-    marketStatus: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'VOLATILE';
-    focusSectors: string[];
-    scannersToActivate: string[];
-    tradingMode: 'AGGRESSIVE' | 'SELECTIVE' | 'DEFENSIVE';
+    analysis: string;
     rationale: string;
+    marketStatus: 'BULL' | 'SIDEWAYS' | 'BEAR';
+    recommendedExposure: number;
 }
 
-class StrategyCommander {
-    private modelName: string;
-
-    constructor() {
-        // Use intelligent model selection for strategy decisions (complex task)
-        this.modelName = selectModelByTask('complex');
-    }
-
+export class StrategyCommander {
     public async decideStrategy(marketData: any, newsHeadlines: string[], recentLessons: string[] = []): Promise<CommanderDecision> {
         try {
             const prompt = `
-                Your task is to analyze the following market intelligence derived from a professional telegram channel.
-                
-                You are 'Jiktoo', an elite AI autonomous trader.
-                Analyze the current market situation and decide the immediate trading strategy.
+You are a strategic market commander for autonomous trading.
 
-                [Current Market Data]
-                ${JSON.stringify(marketData, null, 2)}
+Market Data:
+${JSON.stringify(marketData, null, 2)}
 
-                [Recent News Headlines & Intelligence]
-                ${newsHeadlines.join('\n')}
+Recent News Headlines:
+${newsHeadlines.join('\n')}
 
-                [Lessons from Recent Trades (Feedback Loop)]
-                ${recentLessons.length > 0 ? recentLessons.join('\n') : 'No recent lessons available.'}
+Recent Lessons Learned:
+${recentLessons.join('\n')}
 
-                IMPORTANT: Reflect on the lessons above. If a strategy failed recently in similar conditions, avoid it. If it succeeded, reinforce it.
+Provide a strategic decision in JSON format ONLY:
+{
+    "analysis": "Brief market analysis in Korean",
+    "rationale": "Strategic rationale in Korean",
+    "marketStatus": "BULL" | "SIDEWAYS" | "BEAR",
+    "recommendedExposure": 0.0 to 1.0
+}
 
-                Based on this, determine the market phase, which sectors to focus on, and WHICH TOOLS (Scanners) to deploy right now.
-                
-                Available Tools:
-                - EAGLE_EYE: Detect institutional/foreign supply (Smart Money). Use when market is trending.
-                - VOLUME_SPIKE: Detect sudden volume explosion. Use for momentum trading.
-                - NEW_HIGH: Detect 52-week highs. Use in strong Bull markets.
-                - VALUE_PIVOT: Find undervalued stocks bouncing back. Use in Sideways/Bear markets (Bottom fishing).
-                - CHART_PATTERN: Find technical patterns (Cup&Handle, etc.). Use for precise entry.
-                - NEWS_RADAR: Analyze breaking news. Use when volatility is high due to external events.
+Respond ONLY with valid JSON, no markdown, no explanations.
+`;
 
-                Respond strictly in JSON format.
-                **CRITICAL: The 'rationale' field MUST be written in KOREAN (?�국??.**
-
-                {
-                    "marketStatus": "BULLISH" | "BEARISH" | "NEUTRAL" | "VOLATILE",
-                    "focusSectors": ["Sector1", "Sector2"],
-                    "scannersToActivate": ["SCANNER1", "SCANNER2"],
-                    "tradingMode": "AGGRESSIVE" | "SELECTIVE" | "DEFENSIVE",
-                    "rationale": "?�장 ?�황�?과거 교훈??반영???�세???�단 근거 (?�국?�로 ?�성)"
-                }
-            `;
+            console.log('[StrategyCommander] Requesting decision from Gemini...');
 
             const response = await generateContentWithRetry({
-                model: this.modelName,
-                contents: prompt
+                model: 'gemini-2.0-flash-001',
+                contents: [{ role: 'user', parts: [{ text: prompt }] }]
             });
 
-            const text = response.text || '';
-            const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const decision: CommanderDecision = JSON.parse(jsonStr);
+            const rawText = response?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-            return decision;
+            if (!rawText) {
+                throw new Error('Empty response from Gemini API');
+            }
+
+            console.log('[StrategyCommander] Raw response:', rawText.substring(0, 200));
+
+            // Clean markdown blocks
+            const cleanedText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+            if (!cleanedText) {
+                throw new Error('Response became empty after cleaning');
+            }
+
+            const result = JSON.parse(cleanedText);
+
+            console.log('[StrategyCommander] Decision:', result.marketStatus, 'Exposure:', result.recommendedExposure);
+
+            return {
+                analysis: result.analysis || '시장 분석 데이터 없음',
+                rationale: result.rationale || '전략 근거 없음',
+                marketStatus: result.marketStatus || 'SIDEWAYS',
+                recommendedExposure: result.recommendedExposure ?? 0.5
+            };
 
         } catch (error) {
             console.error('[StrategyCommander] Failed to make decision:', error);
-            // Fallback safe decision
+
+            // Return safe fallback
             return {
-                marketStatus: 'NEUTRAL',
-                focusSectors: [],
-                scannersToActivate: ['VOLUME_SPIKE'],
-                tradingMode: 'SELECTIVE',
-                rationale: 'AI Commander failed to respond. Reverting to safety mode.'
+                analysis: '시장 분석 실패. 안전 모드로 전환합니다.',
+                rationale: 'AI 분석 중 오류가 발생하여 보수적 전략을 채택합니다.',
+                marketStatus: 'SIDEWAYS',
+                recommendedExposure: 0.3
             };
-        }
-    }
-
-    public async analyzeTrade(tradeData: any): Promise<{ analysis: string; lesson: string; score: number }> {
-        try {
-            // Use moderate complexity model for trade analysis
-            const modelName = selectModelByTask('moderate');
-
-            const prompt = `
-                You are 'Jiktoo' (직투), an expert trading coach. Analyze this completed trade and provide a post-mortem.
-
-                [Trade Details]
-                Stock: ${tradeData.stockName} (${tradeData.ticker})
-                Strategy: ${tradeData.strategyUsed}
-                Entry: ${tradeData.entryPrice} on ${tradeData.entryDate}
-                Exit: ${tradeData.exitPrice} on ${tradeData.exitDate}
-                Result: ${tradeData.pnlPercent.toFixed(2)}% (${tradeData.pnlAmount})
-                Market Condition: ${tradeData.marketCondition}
-
-                1. Analyze why this trade succeeded or failed (MUST be in Korean).
-                2. Extract a key lesson for the future (MUST be in Korean, concise).
-                3. Rate this trade from 0 to 100 based on execution and strategy adherence (not just profit).
-
-                Respond strictly in JSON:
-                {
-                    "analysis": "?�세 분석 ?�용 (?�국??...",
-                    "lesson": "??문장 ?�심 교훈 (?�국??...",
-                    "score": 85
-                }
-            `;
-
-            const response = await generateContentWithRetry({
-                model: modelName,
-                contents: prompt
-            });
-
-            const text = response.text || '';
-
-            const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(jsonStr);
-
-        } catch (error) {
-            console.error('[StrategyCommander] Failed to analyze trade:', error);
-            return { analysis: 'Analysis failed.', lesson: 'N/A', score: 0 };
         }
     }
 }

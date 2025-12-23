@@ -58,7 +58,7 @@ const API_GATEWAY_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/api-gateway
 
 // --- KIWOOM BRIDGE CONFIGURATION ---
 export const KIWOOM_BRIDGE_URL = "http://127.0.0.1:8001"; // New Kiwoom Bridge URL
-export const IS_KIWOOM_BRIDGE_ENABLED = true; // Enable Kiwoom Bridge
+export const IS_KIWOOM_BRIDGE_ENABLED = false; // Enable Kiwoom Bridge
 
 
 // [KIS Proxy Configuration] - Local proxy server for Korea Investment & Securities API

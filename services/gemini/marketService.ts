@@ -9,45 +9,76 @@ export interface MarketHealth {
 }
 
 /**
- * Analyze market health using Gemini or Fallback
- * (Re-implemented to fix encoding issues)
+ * Analyze market health using Gemini
  */
 export async function analyzeMarketHealth(target: MarketTarget): Promise<MarketHealth> {
-    // TODO: Connect to actual Gemini Service if needed.
-    // For now, returning a static but CLEAN UTF-8 response to fix garbled text.
+    try {
+        const { callGemini } = await import('./client');
 
-    // Randomize slightly to feel alive
-    const isBull = Math.random() > 0.4;
+        const prompt = `
+            You are a professional market analyst for the ${target === 'KR' ? 'South Korean (KOSPI/KOSDAQ)' : 'US (S&P500/Nasdaq)'} market.
+            Analyze the current market health based on recent general trends (as of late 2025).
+            
+            **CRITICAL: ALL TEXT MUST BE IN KOREAN (한국어)**
+            - Summary: Korean only
+            - Positive Factors: Korean only
+            - Negative Factors: Korean only
+            
+            Return a JSON object with the following structure:
+            {
+                "status": "Bull", "Weak Bull", "Sideways", "Weak Bear", or "Bear",
+                "summary": "시장 상황을 한 문장으로 요약 (반드시 한국어)",
+                "positiveFactors": ["긍정 요인 1 (한국어)", "긍정 요인 2 (한국어)", ...],
+                "negativeFactors": ["부정 요인 1 (한국어)", "부정 요인 2 (한국어)", ...]
+            }
+            
+            Focus on macro trends like interest rates, exchange rates, and sector rotations.
+            Respond ONLY with the JSON object. Do NOT use English for factors.
+        `;
 
-    if (target === 'KR') {
+        const response = await callGemini(prompt);
+
+        // Validate response is not empty
+        if (!response || response.trim().length === 0) {
+            throw new Error('Empty response from Gemini API');
+        }
+
+        // Clean up response if it has markdown blocks
+        const cleanJson = response.replace(/```json|```/g, '').trim();
+
+        // Validate cleaned JSON is not empty
+        if (!cleanJson) {
+            throw new Error('Response became empty after cleaning markdown');
+        }
+
+        const data = JSON.parse(cleanJson);
+
         return {
-            status: isBull ? 'Weak Bull' : 'Weak Bear',
-            summary: isBull
-                ? '국내 증시는 반도체 및 2차전지 섹터의 저가 매수세 유입으로 기술적 반등 시도 중.'
-                : '국내 증시는 글로벌 긴축 우려와 환율 변동성으로 인해 관망세가 짙음.',
-            positiveFactors: [
-                '외국인 순매수 전환 기대',
-                '주요 기술주 낙폭 과대 인식',
-                '정부 밸류업 프로그램 기대감'
-            ],
-            negativeFactors: [
-                '원/달러 환율 불안정',
-                '부동산 PF 리스크 잔존'
-            ]
+            status: data.status,
+            summary: data.summary,
+            positiveFactors: data.positiveFactors || [],
+            negativeFactors: data.negativeFactors || []
         };
-    } else {
-        return {
-            status: 'Sideways',
-            summary: '미국 증시는 연준의 금리 정책 경계감 속에서 빅테크 실적 발표를 대기하며 혼조세.',
-            positiveFactors: [
-                'AI 섹터 성장 기대감 지속',
-                '견조한 고용 지표'
-            ],
-            negativeFactors: [
-                '국채 금리 상승 압력',
-                '차익 실현 매물 출회'
-            ]
-        };
+
+    } catch (error) {
+        console.error('[analyzeMarketHealth] AI Analysis failed, using stable fallback:', error);
+
+        // Return a STABLE fallback instead of random
+        if (target === 'KR') {
+            return {
+                status: 'Sideways',
+                summary: '국내 증시는 글로벌 매크로 불확실성 속에서 박스권 흐름을 보이고 있음.',
+                positiveFactors: ['외국인 수급 개선 기대', '반도체 업황 회복'],
+                negativeFactors: ['환율 변동성 확대', '내수 침체 우려']
+            };
+        } else {
+            return {
+                status: 'Sideways',
+                summary: '미국 증시는 금리 정책 방향성을 확인하며 혼조세를 기록 중.',
+                positiveFactors: ['빅테크 실적 견조', '인플레이션 둔화 추세'],
+                negativeFactors: ['고금리 장기화 우려', '밸류에이션 부담']
+            };
+        }
     }
 }
 
@@ -76,7 +107,7 @@ export async function fetchInstitutionalFlowAnalysis(date?: string): Promise<any
 /**
  * Mock Fetch Stocks for Sector
  */
-export async function fetchStocksForSector(sectors: string[], marketTarget: MarketTarget): Promise<any[]> {
+export async function fetchStocksForSector(_sectors: string[], marketTarget: MarketTarget): Promise<any[]> {
     // Return dummy stocks for the requested sectors
     if (marketTarget === 'KR') {
         return [

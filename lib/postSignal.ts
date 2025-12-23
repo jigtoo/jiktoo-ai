@@ -13,7 +13,8 @@ export async function postSignal(signal: RealtimeSignal) {
       stock_name: signal.stockName,
       rationale: signal.rationale,
       weight: signal.weight ?? 0.5, // Default weight if not provided
-      meta: signal.meta ?? {}
+      meta: signal.meta ?? {},
+      signal_type: signal.source // Use source as default signal_type
     }] as any);
     if (error) throw error;
   } catch (e: any) {

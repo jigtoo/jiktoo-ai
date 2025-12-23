@@ -1,13 +1,24 @@
+import { Subject } from 'rxjs'; // RxJS Subject for Event Stream
 
 import { telegramService } from '../telegramService';
 import { marketLogicService } from '../gemini/marketLogicService';
 import { isWeekend } from '../utils/dateUtils';
 import type { MarketTarget } from '../../types';
 
+export type BriefingEventType = 'BRIEFING_START' | 'BRIEFING_COMPLETE' | 'BRIEFING_ERROR';
+export interface BriefingEvent {
+    type: BriefingEventType;
+    market: MarketTarget;
+    error?: any;
+}
+
 class MorningBriefingScheduler {
     private isRunning = false;
     private checkInterval: NodeJS.Timeout | null = null;
     private lastRunMap: { [key: string]: string } = {};
+
+    // Public Event Stream for UI Notifications
+    public readonly event$ = new Subject<BriefingEvent>();
 
     public start() {
         if (this.isRunning) return;
@@ -47,8 +58,8 @@ class MorningBriefingScheduler {
             }
         }
 
-        // 2. US Morning Briefing (21:30 KST)
-        if (hour === 21 && minute === 30 && this.lastRunMap['US'] !== todayStr) {
+        // 2. US Morning Briefing (22:30 KST - Pre-market / Market Open)
+        if (hour === 22 && minute === 30 && this.lastRunMap['US'] !== todayStr) {
             if (day >= 1 && day <= 5) {
                 await this.runBriefing('US');
                 this.lastRunMap['US'] = todayStr;
@@ -58,6 +69,8 @@ class MorningBriefingScheduler {
 
     private async runBriefing(market: MarketTarget) {
         console.log(`[MorningBriefing] 🌅 Preparing ${market} briefing...`);
+        this.event$.next({ type: 'BRIEFING_START', market });
+
         try {
             // Generate Oracle Logic Chains
             // Generate Oracle Logic Chains (Insight Radar)
@@ -69,6 +82,7 @@ class MorningBriefingScheduler {
 
             if (!chains || chains.length === 0) {
                 console.log('[MorningBriefing] No significant logic chains found today.');
+                this.event$.next({ type: 'BRIEFING_ERROR', market, error: 'No chains found' });
                 return;
             }
 
@@ -99,8 +113,11 @@ class MorningBriefingScheduler {
                 console.log(`[MorningBriefing] 🎯 Forwarded ${addedCount} Insight Targets to Sniper Watchlist.`);
             }
 
+            this.event$.next({ type: 'BRIEFING_COMPLETE', market });
+
         } catch (error) {
             console.error(`[MorningBriefing] Failed to run ${market} briefing:`, error);
+            this.event$.next({ type: 'BRIEFING_ERROR', market, error });
         }
     }
 }

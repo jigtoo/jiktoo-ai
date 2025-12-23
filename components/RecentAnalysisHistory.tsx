@@ -2,7 +2,6 @@
 import React from 'react';
 import type { AnalysisResult, MarketTarget } from '../types';
 import { HistoryIcon, InfoIcon, CheckCircleIcon, AlertIcon } from './icons';
-import { marketInfo } from '../services/marketInfo';
 
 interface RecentAnalysisHistoryProps {
     history: AnalysisResult[];
@@ -36,10 +35,19 @@ export const RecentAnalysisHistory: React.FC<RecentAnalysisHistoryProps> = ({ hi
                 <div className="space-y-3">
                     {history.map(item => {
                         const status = statusConfig[item.status] || { text: item.status, color: 'text-gray-400', icon: <InfoIcon className="h-4 w-4" /> };
-                        
+
+                        // Ensure priceTimestamp is a valid date or fallback to current date
+                        const dateToDisplay = item.priceTimestamp
+                            ? new Date(item.priceTimestamp)
+                            : new Date();
+
+                        const formattedDate = !isNaN(dateToDisplay.getTime())
+                            ? dateToDisplay.toLocaleDateString('ko-KR')
+                            : new Date().toLocaleDateString('ko-KR'); // Fallback if parsed date is invalid
+
                         return (
-                            <div 
-                                key={item.ticker} 
+                            <div
+                                key={item.ticker}
                                 className="bg-gray-800/60 border border-gray-700/80 rounded-lg p-3 sm:p-4 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                             >
                                 <div className="flex-grow">
@@ -50,7 +58,7 @@ export const RecentAnalysisHistory: React.FC<RecentAnalysisHistoryProps> = ({ hi
                                             {status.icon} {status.text}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-1">분석일: {new Date(item.priceTimestamp).toLocaleDateString('ko-KR')}</p>
+                                    <p className="text-xs text-gray-500 mt-1">분석일: {formattedDate}</p>
                                 </div>
                                 <div className="flex-shrink-0 self-end sm:self-center">
                                     <button

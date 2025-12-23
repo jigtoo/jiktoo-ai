@@ -159,8 +159,8 @@ class DeepResearchService {
 
         // 1. Fetch Market Context (Candles)
         const candles = await fetchDailyCandles(ticker, marketTarget, 5);
-        if (!candles || candles.length < 2) {
-            return { trustScore: 50, isManipulation: false, whalesAction: 'UNKNOWN', insight: 'Data insufficient for whale tracking.' };
+        if (!candles || candles.length < 2 || candles.some(c => !c.close || isNaN(c.close))) {
+            return { trustScore: 50, isManipulation: false, whalesAction: 'UNKNOWN', insight: 'Data insufficient or malformed for whale tracking.' };
         }
 
         const today = candles[candles.length - 1];

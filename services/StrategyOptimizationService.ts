@@ -160,7 +160,7 @@ JSON ?ïÏãù?ºÎ°ú ?µÎ?:
 }`;
 
             const result = await generateContentWithRetry({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.0-flash-001',
                 contents: prompt
             });
             const response = result.text;

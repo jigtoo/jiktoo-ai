@@ -1,5 +1,5 @@
 // components/MegatrendDashboard.tsx
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useMegatrend } from '../hooks/useMegatrend';
 import type { MarketTarget } from '../types';
 import type { Megatrend } from '../services/gemini/megatrendService';
@@ -23,12 +23,12 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
         isLoadingStocks,
         isLoadingPortfolio,
         error,
-        analyzeTrends,
         selectTrend,
         discoverStocks,
         buildPortfolio,
         setRiskProfile,
-        reset
+        reset,
+        refreshTrends
     } = useMegatrend(marketTarget);
 
     return (
@@ -45,11 +45,11 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
                 </div>
                 <div className="flex gap-2">
                     <button
-                        onClick={analyzeTrends}
-                        disabled={isLoadingTrends}
-                        className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={refreshTrends}
+                        className="px-3 py-2 bg-blue-700 hover:bg-blue-600 rounded-lg text-xs transition-all flex items-center gap-1"
+                        title="최신 데이터로 다시 분석"
                     >
-                        {isLoadingTrends ? '분석 중...' : '🔍 트렌드 분석'}
+                        🔄 재분석
                     </button>
                     <button
                         onClick={reset}
@@ -68,13 +68,18 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
             )}
 
             {/* Step 1: Megatrends */}
-            {trends.length > 0 && (
+            {isLoadingTrends ? (
+                <div className="flex justify-center items-center h-40 bg-gray-800 rounded-lg border border-gray-600">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400"></div>
+                    <span className="ml-3 text-cyan-400 font-bold">글로벌 메가트렌드 분석 중...</span>
+                </div>
+            ) : trends.length > 0 && (
                 <section className="bg-gray-800 p-4 rounded-lg border border-gray-600">
                     <h3 className="text-lg font-bold mb-3 text-cyan-400">📊 메가트렌드</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {trends.map(trend => (
                             <TrendCard
-                                key={trend.id}
+                                key={`${trend.id}-${trend.title}`}
                                 trend={trend}
                                 isSelected={selectedTrend?.id === trend.id}
                                 onSelect={() => selectTrend(trend)}
@@ -100,15 +105,9 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
                         )}
                     </div>
                     {isLoadingThemes ? (
-                        <AnalysisLog
-                            steps={[
-                                `Analyzing Megatrend: ${selectedTrend.title}...`,
-                                "Scanning global market reports...",
-                                "Identifying key growth sectors...",
-                                "Evaluating market impact (KR/US)...",
-                                "Synthesizing investment themes..."
-                            ]}
-                        />
+                        <div className="flex justify-center items-center h-32">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-400"></div>
+                        </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             {themes.map(theme => (
@@ -135,21 +134,13 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
                         )}
                     </div>
                     {isLoadingStocks ? (
-                        <AnalysisLog
-                            steps={[
-                                "Initializing Stock Discovery Agent...",
-                                `Target Market: ${marketTarget === 'KR' ? 'Korea (KOSPI/KOSDAQ)' : 'USA (NYSE/NASDAQ)'}`,
-                                "Searching for leading companies in each theme...",
-                                "Analyzing financial fundamentals (Revenue, Profit)...",
-                                "Checking recent news and catalysts...",
-                                "Calculating AI Confidence Score...",
-                                "Finalizing stock list..."
-                            ]}
-                        />
+                        <div className="flex justify-center items-center h-32">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-400"></div>
+                        </div>
                     ) : (
                         <div className="space-y-2 max-h-96 overflow-y-auto">
                             {stocks.map((stock, index) => (
-                                <StockCard key={`${stock.ticker}-${index}`} stock={stock} />
+                                <StockCard key={`${stock.ticker}-${index}-${Date.now()}`} stock={stock} />
                             ))}
                         </div>
                     )}
@@ -177,83 +168,48 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
                         </div>
                     </div>
                     {isLoadingPortfolio ? (
-                        <AnalysisLog
-                            steps={[
-                                `Building Portfolio (Risk Profile: ${riskProfile})...`,
-                                "Optimizing asset allocation weights...",
-                                "Calculating expected returns and drawdown...",
-                                "Simulating stress tests...",
-                                "Generating investment rationale...",
-                                "Finalizing portfolio structure..."
-                            ]}
-                        />
+                        <div className="flex justify-center items-center h-32">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-400"></div>
+                        </div>
                     ) : portfolio && (
                         <div className="space-y-4">
                             {/* Portfolio Header */}
                             <div className="bg-gray-700/50 p-4 rounded-lg">
-                                <h4 className="font-bold text-white text-lg mb-2">{portfolio.name}</h4>
+                                <h4 className="font-bold text-white text-lg mb-2">AI 최적화 포트폴리오</h4>
                                 <p className="text-sm text-gray-300 mb-3">{portfolio.description}</p>
-                                <div className="grid grid-cols-3 gap-3 text-xs">
+                                <div className="grid grid-cols-2 gap-3 text-xs">
                                     <div>
-                                        <p className="text-gray-400">시간 지평</p>
-                                        <p className="font-bold text-white">{portfolio.timeHorizon}</p>
+                                        <p className="text-gray-400">총 투자 비중</p>
+                                        <p className="font-bold text-green-400">{portfolio.totalWeight}</p>
                                     </div>
                                     <div>
-                                        <p className="text-gray-400">예상 수익률</p>
-                                        <p className="font-bold text-green-400">{portfolio.expectedReturn}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-gray-400">최대 손실</p>
-                                        <p className="font-bold text-red-400">{portfolio.maxDrawdown}</p>
+                                        <p className="text-gray-400">종목 수</p>
+                                        <p className="font-bold text-white">{portfolio.stocks.length} 개</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Allocations */}
+                            {/* Stocks List */}
                             <div className="space-y-3">
-                                {portfolio.allocations.map((allocation, index) => (
+                                {portfolio.stocks.map((stock, index) => (
                                     <div key={index} className="bg-gray-700/30 p-3 rounded-lg border border-gray-600">
                                         <div className="flex justify-between items-center mb-2">
-                                            <h5 className="font-bold text-green-300">{allocation.theme}</h5>
-                                            <span className="text-sm font-bold text-white">{allocation.weight}%</span>
+                                            <div className="flex items-center gap-2">
+                                                <h5 className="font-bold text-white text-base">{stock.stockName}</h5>
+                                                <span className="text-xs text-gray-400">({stock.ticker})</span>
+                                            </div>
+                                            <span className="text-sm font-bold text-green-400 bg-green-900/30 px-2 py-1 rounded">
+                                                비중 {stock.weight}
+                                            </span>
                                         </div>
-                                        <p className="text-xs text-gray-300 mb-3">{allocation.rationale}</p>
-                                        <div className="space-y-2">
-                                            {allocation.stocks.map((stock, stockIndex) => (
-                                                <div key={stockIndex} className="flex justify-between items-center text-xs bg-gray-800/50 p-2 rounded">
-                                                    <div>
-                                                        <p className="font-bold text-white">{stock.stockName}</p>
-                                                        <p className="text-gray-400">{stock.ticker}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="font-bold text-cyan-400">{stock.weight}%</p>
-                                                        <p className="text-gray-400">{stock.entryStrategy}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                        <p className="text-xs text-gray-300 mb-3 leading-relaxed">{stock.rationale}</p>
+
+                                        <div className="flex items-center gap-2 bg-gray-800/50 p-2 rounded text-xs">
+                                            <span className="text-cyan-400 font-bold">💡 매수 전략:</span>
+                                            <span className="text-white">{stock.buyingStrategy}</span>
                                         </div>
                                     </div>
                                 ))}
-                            </div>
-
-                            {/* Monitoring & Risks */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-gray-700/30 p-3 rounded-lg">
-                                    <h5 className="font-bold text-cyan-400 mb-2 text-sm">📊 모니터링 지표</h5>
-                                    <ul className="text-xs text-gray-300 space-y-1">
-                                        {portfolio.monitoringMetrics.map((metric, i) => (
-                                            <li key={i}>• {metric}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                                <div className="bg-gray-700/30 p-3 rounded-lg">
-                                    <h5 className="font-bold text-red-400 mb-2 text-sm">⚠️ 주요 리스크</h5>
-                                    <ul className="text-xs text-gray-300 space-y-1">
-                                        {portfolio.risks.map((risk, i) => (
-                                            <li key={i}>• {risk}</li>
-                                        ))}
-                                    </ul>
-                                </div>
                             </div>
                         </div>
                     )}
@@ -263,39 +219,7 @@ export const MegatrendDashboard: React.FC<MegatrendDashboardProps> = ({ marketTa
     );
 };
 
-// Analysis Log Component
-const AnalysisLog: React.FC<{ steps: string[] }> = ({ steps }) => {
-    const [currentStep, setCurrentStep] = useState(0);
 
-    useEffect(() => {
-        if (currentStep < steps.length - 1) {
-            const timer = setTimeout(() => {
-                setCurrentStep(prev => prev + 1);
-            }, 2500); // Update message every 2.5 seconds
-            return () => clearTimeout(timer);
-        }
-    }, [currentStep, steps.length]);
-
-    return (
-        <div className="bg-black p-4 rounded-lg font-mono text-xs text-green-400 border border-green-800 shadow-inner min-h-[150px]">
-            <div className="flex items-center gap-2 mb-2 border-b border-green-900 pb-2">
-                <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                <span className="text-gray-500 ml-2">AI Analyst Terminal</span>
-            </div>
-            <div className="space-y-1">
-                {steps.slice(0, currentStep + 1).map((step, i) => (
-                    <div key={i} className="flex gap-2">
-                        <span className="text-gray-500">[{new Date().toLocaleTimeString()}]</span>
-                        <span>{i === currentStep ? '> ' : '  '}{step}</span>
-                        {i === currentStep && <span className="animate-pulse">_</span>}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
 
 // Trend Card Component
 const TrendCard: React.FC<{ trend: Megatrend; isSelected: boolean; onSelect: () => void }> = ({ trend, isSelected, onSelect }) => (
@@ -306,20 +230,28 @@ const TrendCard: React.FC<{ trend: Megatrend; isSelected: boolean; onSelect: () 
             : 'border-gray-600 hover:border-gray-500 bg-gray-700/50'
             }`}
     >
-        <div className="flex justify-between items-start mb-2">
-            <h4 className="font-bold text-white">{trend.title}</h4>
-            <span className={`text-xs px-2 py-1 rounded ${trend.confidence >= 80 ? 'bg-green-600' :
-                trend.confidence >= 60 ? 'bg-yellow-600' :
-                    'bg-red-600'
-                }`}>
-                {trend.confidence}%
-            </span>
-        </div>
-        <p className="text-sm text-gray-300 mb-2">{trend.summary}</p>
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-            <span>⏱️ {trend.timeHorizon}</span>
-            <span>•</span>
-            <span>📈 {trend.investmentOpportunities.length}개 기회</span>
+        <div className="flex flex-col gap-1 mb-2">
+            <div className="flex justify-between items-start">
+                <h4 className="font-bold text-white flex items-center gap-2">
+                    {trend.title}
+                    {trend.summary.includes('[🎯 Strategic Vision]') && (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-purple-600 rounded text-white font-bold animate-pulse">
+                            Vision Sync
+                        </span>
+                    )}
+                </h4>
+                <span className={`text-xs px-2 py-1 rounded ${trend.confidence >= 80 ? 'bg-green-600' :
+                    trend.confidence >= 60 ? 'bg-yellow-600' :
+                        'bg-red-600'
+                    }`}>
+                    {trend.confidence}%
+                </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>⏱️ {trend.timeHorizon}</span>
+                <span>•</span>
+                <span>📈 {trend.investmentOpportunities.length}개 기회</span>
+            </div>
         </div>
     </div>
 );
@@ -360,7 +292,6 @@ const StockCard: React.FC<{ stock: ThemeStock }> = ({ stock }) => (
         </div>
         <div className="mb-2">
             <span className="text-xs px-2 py-0.5 bg-blue-600 rounded mr-1">{stock.theme}</span>
-            <span className="text-xs px-2 py-0.5 bg-purple-600 rounded">{stock.subTheme}</span>
         </div>
         <p className="text-sm text-gray-300 mb-2">{stock.rationale}</p>
         <div className="grid grid-cols-2 gap-2 text-xs">

@@ -19,16 +19,17 @@ export const useAIBriefing = () => {
         setIsLoading(true);
         setError(null);
         try {
-            // Call the new RPC function to get briefings
-            const { data, error: rpcError } = await supabase.rpc('get_all_briefings');
+            // Direct query instead of RPC (fallback)
+            const { data, error: queryError } = await supabase
+                .from('user_intelligence_briefings')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
 
-            if (rpcError) {
-                if (rpcError.message.includes('function get_all_briefings() does not exist')) {
-                    throw new Error("데이터베이스 설정 오류: 'get_all_briefings' 함수가 없습니다. Supabase SQL Editor에서 제공된 SQL 코드를 실행해주세요.");
-                }
-                throw rpcError;
+            if (queryError) {
+                throw queryError;
             }
-            
+
             setBriefings((data as UserIntelligenceBriefing[]) || []);
         } catch (err) {
             setError(err instanceof Error ? err.message : '브리핑 목록을 불러오지 못했습니다.');
@@ -47,35 +48,52 @@ export const useAIBriefing = () => {
             setError(FEATURE_DISABLED_ERROR);
             return { success: false, error: FEATURE_DISABLED_ERROR };
         }
-        setError(null); // Clear previous errors on new submission
+        setError(null);
+
+        const submitWithRetry = async (retries = 2, backoff = 2000): Promise<any> => {
+            try {
+                // Extended timeout to 30s for critical data submission
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('제출 요청 시간 초과 (30초)')), 30000)
+                );
+
+                const insertPromise = (async () => {
+                    const { data, error: insertError } = await (supabase!
+                        .from('user_intelligence_briefings') as any)
+                        .insert({
+                            title: briefingData.title,
+                            content: briefingData.content,
+                            related_tickers: briefingData.related_tickers,
+                            source_url: briefingData.source_url
+                        })
+                        .select()
+                        .single();
+
+                    if (insertError) throw insertError;
+                    return data;
+                })();
+
+                return await Promise.race([insertPromise, timeoutPromise]);
+            } catch (err) {
+                if (retries > 0) {
+                    console.log(`[Briefing] Submission failed. Retrying in ${backoff}ms... (${retries} left)`);
+                    await new Promise(res => setTimeout(res, backoff));
+                    return submitWithRetry(retries - 1, backoff * 2);
+                }
+                throw err;
+            }
+        };
 
         try {
-            // Call the new RPC function to insert a briefing
-            // FIX: Changed supabase.rpc to (supabase.rpc as any) to bypass Supabase client type inference error.
-            const { data, error: rpcError } = await (supabase.rpc as any)('insert_briefing', {
-                p_title: briefingData.title,
-                p_content: briefingData.content,
-                p_related_tickers: briefingData.related_tickers,
-                p_source_url: briefingData.source_url
-            });
-
-            if (rpcError) {
-                if (rpcError.message.includes('function insert_briefing(text, text, text, text) does not exist')) {
-                    throw new Error("데이터베이스 설정 오류: 'insert_briefing' 함수가 없습니다. Supabase SQL Editor에서 제공된 SQL 코드를 실행해주세요.");
-                }
-                throw rpcError;
-            }
-
-            // FIX: Cast `data` to `any` to access its properties without a type error.
-            if (data && (data as any).length > 0) {
-                // The RPC returns the new row, add it to the top of the list
-                setBriefings(prev => [(data as any)[0] as UserIntelligenceBriefing, ...prev]);
+            const data = await submitWithRetry();
+            if (data) {
+                setBriefings(prev => [data as UserIntelligenceBriefing, ...prev]);
             }
             return { success: true, error: null };
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : '브리핑 제출에 실패했습니다.';
+            const errorMessage = err instanceof Error ? err.message : '브리핑 제출에 최종 실패했습니다. (재시도 포함)';
             setError(errorMessage);
-            console.error("Briefing submission failed:", err);
+            console.error("Briefing submission finally failed:", err);
             return { success: false, error: errorMessage };
         }
     };

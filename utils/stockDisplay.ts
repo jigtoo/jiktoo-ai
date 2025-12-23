@@ -25,6 +25,53 @@ const KOREAN_STOCK_NAMES: Record<string, string> = {
     'LG Chem, Ltd.': 'LG화학',
     'Hyundai Steel Company': '현대제철',
     'POSCO': '포스코',
+};
+
+// Known KOSDAQ Tickers (Augmented with User feedback)
+export const KOSDAQ_TICKERS = new Set([
+    '196170', '086520', '247540', '028300', '141080', '403870', '214150', '058470',
+    '257720', '000250', '214450', '089030', '310210', '298380', '087010', '277810',
+    '082850', '108320', '121600', '393890', '067310',
+    '293490', // 카카오게임즈
+    '263750', // 펄어비스
+    '357980', // 모델솔루션
+    '402340', // 비올
+    '237690', // 에스티팜
+    '035900', // JYP Ent.
+    '122870', // 와이지엔터테인먼트
+    '041510', // 에스엠
+]);
+
+export function getMarketType(ticker: string, defaultRegion: string = 'KR'): string {
+    const cleaned = cleanTicker(ticker);
+    if (defaultRegion === 'US') return 'NASDAQ'; // Default for US (could be NYSE but less critical)
+    if (!isKoreanStock(cleaned)) return 'NASDAQ'; // Fallback if not KR format
+
+    if (KOSDAQ_TICKERS.has(cleaned)) {
+        return 'KOSDAQ';
+    }
+    return 'KOSPI'; // Default for KR
+}
+
+const KOREAN_STOCK_NAMES_OLD: Record<string, string> = {
+    // Keeping legacy structure if needed, but merging above is better.
+    // Actually, I'll just append to the existing map in the file.
+
+    'Samsung Electronics Co., Ltd.': '삼성전자',
+    'SK Innovation Co., Ltd.': 'SK이노베이션',
+    'NAVER Corporation': '네이버',
+    'Kakao Corp.': '카카오',
+    'Hyundai Motor Company': '현대자동차',
+    'Kia Corporation': '기아',
+    'POSCO Holdings Inc.': '포스코홀딩스',
+    'LG Energy Solution, Ltd.': 'LG에너지솔루션',
+    'Samsung Biologics Co.,Ltd.': '삼성바이오로직스',
+    'Celltrion, Inc.': '셀트리온',
+    'SK Hynix Inc.': 'SK하이닉스',
+    'Samsung SDI Co., Ltd.': '삼성SDI',
+    'LG Chem, Ltd.': 'LG화학',
+    'Hyundai Steel Company': '현대제철',
+    'POSCO': '포스코',
     'Hanwha Aerospace Co., Ltd.': '한화에어로스페이스',
     'Korea Zinc Company, Ltd.': '고려아연',
     'KEPCO': '한국전력',

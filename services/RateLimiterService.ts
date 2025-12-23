@@ -99,41 +99,59 @@ class RateLimiterService {
 
         this.isProcessing = true;
 
-        while (this.queue.length > 0 && this.tokens > 0) {
-            const request = this.queue.shift();
-            if (!request) break;
+        try {
+            // Dispatch loop: Fire requests as long as we have tokens
+            while (this.queue.length > 0 && this.tokens > 0) {
+                const request = this.queue.shift();
+                if (!request) break;
 
-            this.tokens--;
+                this.tokens--;
 
-            try {
-                const result = await request.execute();
-                request.resolve(result);
-            } catch (error: any) {
-                // Handle 429 errors with exponential backoff
-                if (error.message?.includes('429') || error.message?.includes('quota')) {
-                    request.retries++;
+                // Execute asynchronously (Fire and Forget from the queue's perspective)
+                // This prevents Head-of-Line blocking if one request hangs
+                this.executeRequest(request);
 
-                    if (request.retries < request.maxRetries) {
-                        const backoffMs = Math.min(5000 * Math.pow(2, request.retries), 60000);
-                        console.warn(`[RateLimiter] 429 error, retrying in ${backoffMs}ms (attempt ${request.retries}/${request.maxRetries})`);
-
-                        setTimeout(() => {
-                            this.queue.unshift(request); // Re-queue with high priority
-                        }, backoffMs);
-                    } else {
-                        console.error(`[RateLimiter] Max retries exceeded for request ${request.id}`);
-                        request.reject(error);
-                    }
-                } else {
-                    request.reject(error);
+                // Small yield to prevent event loop starvation if queue is huge
+                if (this.queue.length % 10 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
                 }
             }
-
-            // Small delay between requests
-            await new Promise(resolve => setTimeout(resolve, 50));
+        } finally {
+            this.isProcessing = false;
         }
+    }
 
-        this.isProcessing = false;
+    /**
+     * Execute a single request with retries
+     */
+    private async executeRequest(request: QueuedRequest): Promise<void> {
+        try {
+            const result = await request.execute();
+            request.resolve(result);
+        } catch (error: any) {
+            // Handle 429 errors with exponential backoff
+            if (error.message?.includes('429') || error.message?.includes('quota')) {
+                request.retries++;
+
+                if (request.retries < request.maxRetries) {
+                    const backoffMs = Math.min(5000 * Math.pow(2, request.retries), 60000);
+                    console.warn(`[RateLimiter] 429 error, retrying in ${backoffMs}ms (attempt ${request.retries}/${request.maxRetries})`);
+
+                    setTimeout(() => {
+                        // Re-queue: We must be careful not to double count retries in a way that loops forever
+                        // But here we push back to queue. 
+                        // Note: Re-queuing means it needs another token. This is acceptable for 429s.
+                        this.queue.unshift(request);
+                        this.processQueue(); // Trigger queue check
+                    }, backoffMs);
+                } else {
+                    console.error(`[RateLimiter] Max retries exceeded for request ${request.id}`);
+                    request.reject(error);
+                }
+            } else {
+                request.reject(error);
+            }
+        }
     }
 
     /**

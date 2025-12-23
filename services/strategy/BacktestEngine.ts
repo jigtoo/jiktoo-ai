@@ -72,6 +72,22 @@ export const runBacktest = async (
     let startIndex = 200;
     if (sortedData.length < startIndex) startIndex = 0;
 
+    // Safe date formatting helper
+    const formatSafeDate = (timestamp: number): string => {
+        try {
+            if (!timestamp || isNaN(timestamp) || timestamp <= 0) {
+                return new Date().toISOString().split('T')[0]; // Fallback to today
+            }
+            const date = new Date(timestamp);
+            if (isNaN(date.getTime())) {
+                return new Date().toISOString().split('T')[0];
+            }
+            return date.toISOString().split('T')[0];
+        } catch (e) {
+            return new Date().toISOString().split('T')[0];
+        }
+    };
+
     for (let i = startIndex; i < sortedData.length; i++) {
         const bar = sortedData[i];
 
@@ -84,7 +100,7 @@ export const runBacktest = async (
 
             if (currentReturn <= stopLoss || currentReturn >= takeProfit) {
                 // Execute Exit
-                currentTrade.exitDate = new Date(bar.t).toISOString().split('T')[0];
+                currentTrade.exitDate = formatSafeDate(bar.t);
                 currentTrade.exitPrice = bar.c;
                 currentTrade.profit = (bar.c - currentTrade.entryPrice);
                 currentTrade.profitPercent = currentReturn * 100;
@@ -95,9 +111,9 @@ export const runBacktest = async (
             // Check Entry
             const signalTriggered = evaluateLogic(strategy.logic_v2, i, sortedData, indicatorCache);
             if (signalTriggered) {
-                // console.log(`[BacktestEngine] 🎯 BUY Signal at index ${i}, Date: ${new Date(bar.t).toISOString().split('T')[0]}`);
+                // console.log(`[BacktestEngine] 🎯 BUY Signal at index ${i}, Date: ${formatSafeDate(bar.t)}`);
                 currentTrade = {
-                    entryDate: new Date(bar.t).toISOString().split('T')[0],
+                    entryDate: formatSafeDate(bar.t),
                     entryPrice: bar.c,
                     type: 'LONG'
                 };
@@ -127,8 +143,12 @@ export const runBacktest = async (
         else aiAnalysis = "현재 전략은 손실이 발생하고 있습니다. 진입 조건을 더 까다롭게 설정해보세요.";
     }
 
+
+    const startDate = formatSafeDate(sortedData[0]?.t);
+    const endDate = formatSafeDate(sortedData[sortedData.length - 1]?.t);
+
     return {
-        period: `${new Date(sortedData[0].t).toISOString().slice(0, 10)} ~ ${new Date(sortedData[sortedData.length - 1].t).toISOString().slice(0, 10)}`,
+        period: `${startDate} ~ ${endDate}`,
         totalTrades,
         winRate,
         profitFactor: 1.5,

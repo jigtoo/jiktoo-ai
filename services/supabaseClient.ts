@@ -376,9 +376,55 @@ export type Database = {
         };
       };
       alpha_engine_playbooks: {
-        Row: import('../types').SignalEngineDBRow;
-        Insert: import('../types').SignalEngineDBRow;
-        Update: Partial<import('../types').SignalEngineDBRow>;
+        Row: {
+          id: string;
+          market: string;
+          ticker: string;
+          stock_name: string;
+          strategy_name: string;
+          strategy_summary: string | null;
+          ai_confidence: number | null;
+          key_levels: Json | null;
+          strategy_type: string | null;
+          analysis_checklist: Json | null;
+          is_user_recommended: boolean | null;
+          source: string | null;
+          sources: string[] | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          market: string;
+          ticker: string;
+          stock_name: string;
+          strategy_name: string;
+          strategy_summary?: string | null;
+          ai_confidence?: number | null;
+          key_levels?: Json | null;
+          strategy_type?: string | null;
+          analysis_checklist?: Json | null;
+          is_user_recommended?: boolean | null;
+          source?: string | null;
+          sources?: string[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          market?: string;
+          ticker?: string;
+          stock_name?: string;
+          strategy_name?: string;
+          strategy_summary?: string | null;
+          ai_confidence?: number | null;
+          key_levels?: Json | null;
+          strategy_type?: string | null;
+          analysis_checklist?: Json | null;
+          is_user_recommended?: boolean | null;
+          source?: string | null;
+          sources?: string[] | null;
+          updated_at?: string;
+        };
       };
       telegram_messages: {
         Row: {
@@ -802,6 +848,7 @@ export type Database = {
           rationale: string;
           weight: number;
           meta: Json | null;
+          signal_type: string;
         };
         Insert: {
           id?: string;
@@ -812,6 +859,7 @@ export type Database = {
           rationale: string;
           weight: number;
           meta?: Json | null;
+          signal_type?: string;
         };
         Update: {
           // Not typically updated

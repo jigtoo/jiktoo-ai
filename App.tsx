@@ -12,6 +12,9 @@ import {
     Outlet // Added
 } from 'react-router-dom';
 
+import { toastService } from './services/ToastService';
+import { scannerHub } from './services/discovery/ScannerHubService';
+
 // FIX: Updated all internal imports to use relative paths
 import { useDiscovery } from './hooks/useDiscovery';
 import { usePortfolio } from './hooks/usePortfolio';
@@ -29,6 +32,7 @@ import { useAIQuantScreener } from './hooks/useAIQuantScreener'; // NEW: AI Quan
 import { useBFLScanner } from './hooks/useBFLScanner';
 import { useMemoir } from './hooks/useMemoir';
 import { useAlphaEngine } from './hooks/useAlphaEngine';
+import { marketRegimeService } from './services/MarketRegimeService'; // FIX: Added import
 import { useUserWatchlist } from './hooks/useUserWatchlist';
 import { useDayTrader } from './hooks/useDayTrader';
 import { useStrategyLab } from './hooks/useStrategyLab';
@@ -250,7 +254,8 @@ const App: React.FC = () => {
             // Fail-safe timeout
             const timeoutId = setTimeout(() => {
                 if (!cancelled) {
-                    console.warn('[App] Auth check timed out! Force clearing session.');
+                    // Silent - Auth check timeout is handled gracefully
+                    // console.log('[App] Auth check timeout - retrying...');
                     localStorage.clear();
                     setPhase('unauthenticated');
                     setInitError('Authentication check timed out. Please try again.');
@@ -399,6 +404,39 @@ const InnerApp: React.FC = () => {
         setToasts(prev => prev.filter(t => t.id !== id));
     };
 
+
+
+    // ...
+
+    // [New] Global Event Observer (Decoupled Notification System)
+    useEffect(() => {
+        // 1. Toast Bus
+        const sub1 = toastService.toast$.subscribe(event => {
+            addToast(event.type, event.message, event.duration);
+        });
+
+        // 2. Scanner Hub Events
+        const sub2 = scannerHub.event$.subscribe(event => {
+            if (event.type === 'SCAN_START') addToast('info', `[Discovery] ${event.market} 시장 전체 스캔 시작...`);
+            if (event.type === 'SCAN_COMPLETE') addToast('success', `[Discovery] 스캔 완료! ${event.count}개 종목 포착`);
+            if (event.type === 'SCAN_ERROR') addToast('error', `[Discovery] 스캔 중 오류 발생: ${event.error}`);
+        });
+
+        // 3. Morning Briefing Events
+        const sub3 = morningBriefingScheduler.event$.subscribe(event => {
+            const marketName = event.market === 'KR' ? '한국' : '미국';
+            if (event.type === 'BRIEFING_START') addToast('info', `[Auto-Pilot] ${marketName} 모닝 브리핑 생성 시작...`);
+            if (event.type === 'BRIEFING_COMPLETE') addToast('success', `[Auto-Pilot] ${marketName} 모닝 브리핑 전송 완료!`);
+            if (event.type === 'BRIEFING_ERROR') addToast('error', `[Auto-Pilot] 브리핑 생성 실패 (로그 확인)`);
+        });
+
+        return () => {
+            sub1.unsubscribe();
+            sub2.unsubscribe();
+            sub3.unsubscribe();
+        };
+    }, []);
+
     const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
     const [viewingSnapshot, setViewingSnapshot] = useState<AnalysisResult | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -444,12 +482,30 @@ const InnerApp: React.FC = () => {
         setIsReadyForAnalysis(!userWatchlist.isLoading);
     }, [userWatchlist.isLoading]);
 
-    // NEW: Derive market regime from the discovery hook's data to ensure consistency.
-    const marketRegimeAnalysis: MarketRegimeAnalysis | null = discovery.marketHealth?.regimeAnalysis
+    // FIX: Auto-load Market Regime on mount to prevent infinite loading
+    const [marketRegimeStatus, setMarketRegimeStatus] = useState<any>(null);
+
+    useEffect(() => {
+        const loadRegime = async () => {
+            try {
+                const status = await marketRegimeService.analyzeCurrentRegime(marketTarget);
+                setMarketRegimeStatus(status);
+            } catch (error) {
+                console.error('[App] Failed to load market regime:', error);
+            }
+        };
+        loadRegime();
+
+        // Refresh every 30 minutes
+        const interval = setInterval(loadRegime, 1000 * 60 * 30);
+        return () => clearInterval(interval);
+    }, [marketTarget]);
+
+    // DEPRECATED: Use direct marketRegimeStatus instead of discovery.marketHealth
+    const marketRegimeAnalysis: MarketRegimeAnalysis | null = marketRegimeStatus
         ? {
-            // FIX: Cast regime to MarketRegime type.
-            regime: discovery.marketHealth.regimeAnalysis.regime as MarketRegime,
-            summary: discovery.marketHealth.regimeAnalysis.adaptationAdvice,
+            regime: marketRegimeStatus.regime as MarketRegime,
+            summary: `Score: ${marketRegimeStatus.score} | Exposure: ${(marketRegimeStatus.recommendedExposure * 100).toFixed(0)}%`,
         }
         : null;
 
@@ -534,7 +590,8 @@ const InnerApp: React.FC = () => {
                     throw new Error(`HTTP ${response.status}`);
                 }
             } catch (error: any) {
-                console.error('[KIS Proxy] Connection failed:', error.message);
+                // Silent error - KIS Proxy is optional
+                // console.log('[KIS Proxy] Optional service not available:', error.message);
                 setBridgeStatus('error');
                 setBridgeError(error.message || 'Connection failed');
             }
@@ -689,6 +746,14 @@ const InnerApp: React.FC = () => {
         discovery.handleSearch(ticker, rationale, stockName);
     };
 
+    // [NAVIGATION FIX] Automatically redirect to Home when an analysis result is loaded from history or search
+    useEffect(() => {
+        // If we have a result, and we are NOT on the home page (where results are shown), go to home.
+        if (discovery.analysisResult && location.pathname !== '/') {
+            navigate('/');
+        }
+    }, [discovery.analysisResult, location.pathname, navigate]);
+
     return (
         <>
             {!IS_SUPABASE_ENABLED && (
@@ -708,6 +773,7 @@ const InnerApp: React.FC = () => {
                     execAlphaBrief={discovery.execAlphaBrief}
                     isBriefLoading={discovery.isBriefLoading}
                     marketRegime={marketRegimeAnalysis} // NEW: Pass derived regime to Layout
+                    marketRegimeStatus={marketRegimeStatus} // FIX: Pass status for MarketReg imeIndicator
                 />}>
                     <Route index element={
                         discovery.analysisResult ? (
@@ -717,6 +783,7 @@ const InnerApp: React.FC = () => {
                                 onUpdateUserNote={discovery.handleUpdateUserNote}
                                 onGoHome={discovery.handleGoHome}
                                 marketTarget={marketTarget}
+                                onSubscribeTelegram={(ticker, stockName) => handleOpenTelegramModal({ id: `${ticker}-Watcher`, ticker, stockName, strategyName: '기타', strategySummary: '트리거 워처 실시간 모니터링', aiConfidence: 90, keyLevels: { entry: '분석 참조', stopLoss: '분석 참조', target: '분석 참조' }, analysisChecklist: [], isUserRecommended: true, addedAt: new Date().toISOString(), strategyType: 'SwingTrade' })}
                             />
                         ) : (
                             <Navigate to="/discovery" replace />
@@ -876,12 +943,13 @@ const Layout: React.FC<{
     execAlphaBrief: ExecAlphaBrief | null;
     isBriefLoading: boolean;
     marketRegime: MarketRegimeAnalysis | null;
+    marketRegimeStatus: any; // FIX: Added for MarketRegimeIndicator
 }> = ({
     marketTarget, handleMarketChange, isLoading,
     bridgeStatus, bridgeError, onFullDataRefresh, isFullRefreshLoading,
     persona, onPersonaChange,
     sessionLabel, execAlphaBrief, isBriefLoading,
-    marketRegime
+    marketRegime, marketRegimeStatus // FIX: Added to destructuring
 }) => {
         const [isGuideOpen, setIsGuideOpen] = useState(false);
         const [showShadowTrader, setShowShadowTrader] = useState(false);
@@ -999,7 +1067,7 @@ const Layout: React.FC<{
                                     label={IS_KIS_PROXY_ENABLED ? 'KIS Proxy' : '키움 브릿지'}
                                 />
                             </div>
-                            <MarketRegimeIndicator regime={marketRegime} />
+                            <MarketRegimeIndicator status={marketRegimeStatus} marketTarget={marketTarget} />
                             <PersonaSwitcher currentPersona={persona} onPersonaChange={onPersonaChange} />
                             <MarketSwitcher currentMarket={marketTarget} onMarketChange={handleMarketChange} disabled={isLoading} />
                         </div>

@@ -68,7 +68,8 @@ class KisWebSocketService {
             };
 
             this.ws.onerror = (error) => {
-                console.error('[KIS WebSocket] Error:', error);
+                // Silent - WebSocket is optional for real-time updates
+                // console.log('[KIS WebSocket] Optional service error');
                 this.isConnecting = false;
             };
 
@@ -178,7 +179,8 @@ class KisWebSocketService {
             }
 
         } catch (error) {
-            console.error('[KIS WebSocket] Error handling message:', error);
+            // Silent - Message handling error (non-critical)
+            // console.log('[KIS WebSocket] Message handling error');
         }
     }
 

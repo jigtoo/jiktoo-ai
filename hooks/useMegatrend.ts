@@ -4,6 +4,7 @@ import { analyzeMegatrends, type Megatrend } from '../services/gemini/megatrendS
 import { mapTrendToThemes, type InvestmentTheme } from '../services/gemini/themeMapperService';
 import { discoverStocksByTheme, type ThemeStock } from '../services/gemini/stockDiscoveryService';
 import { buildLongTermPortfolio, type LongTermPortfolio } from '../services/gemini/portfolioBuilderService';
+// Trigger rebuild for portfolioBuilderService integration
 import { supabase } from '../services/supabaseClient';
 
 interface MegatrendState {
@@ -40,14 +41,18 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
     // Load existing megatrend data from Supabase on mount
     useEffect(() => {
         const loadExistingData = async () => {
+            setState(prev => ({ ...prev, isLoadingTrends: true, error: null })); // Start loading
             try {
-                // Load latest megatrends for this market
-                const { data: trendsData, error: trendsError } = await supabase
+                // Check if we have valid data in DB (younger than 72 hours)
+                const threeDaysAgo = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+
+                const { data: trendsData, error: trendsError } = await supabase!
                     .from('megatrend_analysis')
                     .select('*')
-                    .eq('market_target', marketTarget)
+                    .or(`market_target.eq.${marketTarget},market_target.eq.GLOBAL`)
+                    .gt('analyzed_at', threeDaysAgo) // Only fetch fresh data
                     .order('analyzed_at', { ascending: false })
-                    .limit(5);
+                    .limit(10); // Check a few more to filter effectively
 
                 if (!trendsError && trendsData && trendsData.length > 0) {
                     const trends: Megatrend[] = trendsData.map((t: any) => ({
@@ -61,11 +66,24 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
                         investmentOpportunities: t.investment_opportunities || [],
                         sources: t.sources || []
                     }));
-                    setState(prev => ({ ...prev, trends }));
-                    console.log(`[useMegatrend] Loaded ${trends.length} existing megatrends from DB`);
+
+                    // Deduplicate based on title to avoid seeing same trend twice (KR & GLOBAL)
+                    const uniqueTrends = trends.filter((trend, index, self) =>
+                        index === self.findIndex((t) => (
+                            t.title === trend.title
+                        ))
+                    );
+
+                    setState(prev => ({ ...prev, trends: uniqueTrends, isLoadingTrends: false }));
+                    console.log(`[useMegatrend] Loaded ${uniqueTrends.length} fresh megatrends from DB (<24h)`);
+                } else {
+                    // Start auto-analysis only if no fresh data found
+                    console.log('[useMegatrend] No fresh data found (<24h). Triggering auto-analysis...');
+                    analyzeTrends(); // analyzeTrends will handle its own loading state
                 }
             } catch (err) {
                 console.error('[useMegatrend] Failed to load existing data:', err);
+                setState(prev => ({ ...prev, isLoadingTrends: false, error: '데이터 로드 중 오류가 발생했습니다.' }));
             }
         };
 
@@ -109,17 +127,19 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
                         analyzed_at: new Date().toISOString()
                     }));
 
-                    const { error: saveError } = await supabase
+                    const { error: saveError } = await supabase!
                         .from('megatrend_analysis')
-                        .upsert(dbRecords, { onConflict: 'id' });
+                        .upsert(dbRecords as any, { onConflict: 'id' });
 
                     if (saveError) {
                         console.error('[useMegatrend] Failed to save trends to DB:', saveError);
                     } else {
                         console.log('[useMegatrend] Successfully saved trends to DB');
                     }
-                } catch (dbErr) {
-                    console.error('[useMegatrend] DB save error:', dbErr);
+                } catch (dbErr: any) {
+                    // Graceful degradation: If DB save fails (e.g., 403), just log warning and proceed
+                    // This allows users to see results even if they don't block history
+                    console.warn('[useMegatrend] DB save skipped (likely permission/RLS issue). showing local results only.');
                 }
 
                 setState(prev => ({ ...prev, trends: mappedTrends, isLoadingTrends: false }));
@@ -143,6 +163,12 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
         }
     }, [marketTarget]);
 
+    // Force Refresh Trend (User initiated)
+    const refreshTrends = useCallback(() => {
+        console.log('[useMegatrend] User forced refresh. Analyzing new trends...');
+        analyzeTrends();
+    }, [analyzeTrends]);
+
     // Step 2: Select a trend and map to themes
     const selectTrend = useCallback(async (trend: Megatrend) => {
         setState(prev => ({
@@ -155,6 +181,30 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
             portfolio: null // Clear previous portfolio
         }));
         try {
+            // 2-1 Check DB Cache first to avoid wasted tokens
+            const { data: cachedThemes } = await supabase!
+                .from('investment_themes')
+                .select('*')
+                .eq('megatrend_id', trend.id);
+
+            if (cachedThemes && cachedThemes.length > 0) {
+                console.log('[useMegatrend] Cache Hit! Loaded themes from DB.');
+                const themes: InvestmentTheme[] = cachedThemes.map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    megatrendId: t.megatrend_id,
+                    description: t.description,
+                    subThemes: t.sub_themes,
+                    targetMarkets: t.target_markets,
+                    expectedGrowthRate: t.expected_growth_rate,
+                    timeframe: t.timeframe
+                }));
+                setState(prev => ({ ...prev, themes, isLoadingThemes: false }));
+                return;
+            }
+
+            // 2-2 If no cache, call AI
+            console.log('[useMegatrend] No cache found. Calling AI for themes...');
             const themes = await mapTrendToThemes(trend);
 
             // Save to Supabase
@@ -170,9 +220,9 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
                     timeframe: t.timeframe
                 }));
 
-                const { error: saveError } = await supabase
+                const { error: saveError } = await supabase!
                     .from('investment_themes')
-                    .upsert(dbRecords, { onConflict: 'id' });
+                    .upsert(dbRecords as any, { onConflict: 'id' });
 
                 if (saveError) {
                     console.error('[useMegatrend] Failed to save themes to DB:', saveError);
@@ -203,19 +253,54 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
 
         setState(prev => ({ ...prev, isLoadingStocks: true, error: null }));
         try {
-            const stockPromises = state.themes.map(theme =>
-                discoverStocksByTheme(theme, marketTarget)
-            );
-            const stockArrays = await Promise.all(stockPromises);
-            const allStocks = stockArrays.flat();
+            // 3-1 Check DB Cache for stocks
+            // Since we need to check ALL themes, we can't easily do a single query unless we iterate or use 'in'.
+            // Let's check if we have stocks for the FIRST theme as a proxy, or just query all for current themes.
+            // A simple way: Query theme_stocks where theme_id matches any of our theme IDs.
 
-            // Save to Supabase
-            try {
-                const dbRecords = allStocks.map(s => ({
+            const themeIds = state.themes.map(t => t.id.replace(/\s/g, '_')); // Assuming ID format consistency
+            // Actually, let's just query by the first theme to see if we have data. Ideally we should check all.
+            // But simpler is: Just try to fetch stocks for these themes.
+
+            // Construct 'or' filter for theme_name or theme_id
+            // Because 'or' with many items is hard, let's try a different approach.
+            // Let's just fetch ALL stocks for this marketTarget created recently? Too broad.
+            // Let's iterate and check cache individually (parallel).
+
+            const stockPromises = state.themes.map(async (theme) => {
+                // Check DB
+                const { data: cachedStocks } = await supabase!
+                    .from('theme_stocks')
+                    .select('*')
+                    .eq('theme_name', theme.name)
+                    .eq('market_target', marketTarget)
+                    .limit(5);
+
+                if (cachedStocks && cachedStocks.length > 0) {
+                    console.log(`[useMegatrend] Cache Hit for theme: ${theme.name}`);
+                    return cachedStocks.map((s: any) => ({
+                        ticker: s.ticker,
+                        stockName: s.stock_name,
+                        theme: s.theme_name,
+                        rationale: s.rationale,
+                        marketCap: s.market_cap,
+                        revenueExposure: parseFloat(s.revenue_exposure || '0'),
+                        aiConfidence: s.ai_confidence,
+                        catalysts: s.catalysts || [],
+                        risks: s.risks || []
+                    }));
+                }
+
+                // If not in DB, call AI
+                console.log(`[useMegatrend] No cache for ${theme.name}, calling AI...`);
+                const aiStocks = await discoverStocksByTheme(theme, marketTarget);
+
+                // Save to DB (Fire and Forget)
+                const dbRecords = aiStocks.map(s => ({
                     id: `${s.ticker}_${s.theme.replace(/\s/g, '_')}`,
                     ticker: s.ticker,
                     stock_name: s.stockName,
-                    theme_id: s.theme.replace(/\s/g, '_'), // Generate ID from theme name
+                    theme_id: s.theme.replace(/\s/g, '_'),
                     theme_name: s.theme,
                     rationale: s.rationale,
                     market_cap: s.marketCap,
@@ -223,21 +308,19 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
                     ai_confidence: s.aiConfidence,
                     catalysts: s.catalysts,
                     risks: s.risks,
-                    market_target: marketTarget
+                    market_target: marketTarget,
+                    created_at: new Date().toISOString()
                 }));
 
-                const { error: saveError } = await supabase
-                    .from('theme_stocks')
-                    .upsert(dbRecords, { onConflict: 'id' });
+                supabase!.from('theme_stocks').upsert(dbRecords as any, { onConflict: 'id' }).then(({ error }) => {
+                    if (error) console.error('Stock save error:', error);
+                });
 
-                if (saveError) {
-                    console.error('[useMegatrend] Failed to save stocks to DB:', saveError);
-                } else {
-                    console.log('[useMegatrend] Successfully saved stocks to DB');
-                }
-            } catch (dbErr) {
-                console.error('[useMegatrend] DB save error:', dbErr);
-            }
+                return aiStocks;
+            });
+
+            const stockArrays = await Promise.all(stockPromises);
+            const allStocks = stockArrays.flat();
 
             setState(prev => ({ ...prev, stocks: allStocks, isLoadingStocks: false }));
         } catch (err: any) {
@@ -293,6 +376,7 @@ export const useMegatrend = (marketTarget: MarketTarget) => {
         discoverStocks,
         buildPortfolio,
         setRiskProfile,
-        reset
+        reset,
+        refreshTrends // Export new function
     };
 };

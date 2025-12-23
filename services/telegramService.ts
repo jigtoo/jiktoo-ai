@@ -148,14 +148,17 @@ class TelegramService {
         reason: string;
         recommendation: string;
     }): Promise<boolean> {
-        const message: TelegramMessage = {
-            title: '시장 국면 변경 감지',
-            body: `*이전*: ${this.escapeMarkdown(data.previousRegime)}\n*현재*: ${this.escapeMarkdown(data.newRegime)}\n\n*변경근거*:\n${this.escapeMarkdown(data.reason)}\n\n*추천전략*:\n${this.escapeMarkdown(data.recommendation)}`,
-            urgency: 'high',
-            emoji: '🔄',
-        };
+        // [USER REQUEST] Silence Market Regime Notifications
+        // const message: TelegramMessage = {
+        //     title: '시장 국면 변경 감지',
+        //     body: `*이전*: ${this.escapeMarkdown(data.previousRegime)}\n*현재*: ${this.escapeMarkdown(data.newRegime)}\n\n*변경근거*:\n${this.escapeMarkdown(data.reason)}\n\n*추천전략*:\n${this.escapeMarkdown(data.recommendation)}`,
+        //     urgency: 'high',
+        //     emoji: '🔄',
+        // };
 
-        return this.sendMessage(message);
+        // return this.sendMessage(message);
+        console.log(`[Telegram] 🔇 Market Regime Change Alert Silenced: ${data.previousRegime} -> ${data.newRegime}`);
+        return true;
     }
 
     /**

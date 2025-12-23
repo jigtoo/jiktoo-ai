@@ -1,5 +1,6 @@
-// services/gemini/strategyService.ts
+ï»¿// services/gemini/strategyService.ts
 import { generateContentWithRetry } from './client';
+import { sanitizeJsonString } from '../utils/jsonUtils';
 import type { StrategicOutlook, MarketTarget } from '../../types';
 
 export const generateStrategicOutlook = async (marketTarget: MarketTarget): Promise<StrategicOutlook> => {
@@ -22,16 +23,17 @@ export const generateStrategicOutlook = async (marketTarget: MarketTarget): Prom
             config: { responseMimeType: 'application/json' }
         });
 
-        return JSON.parse(response.text || '{}');
+        const text = response.text || '';
+        return JSON.parse(sanitizeJsonString(text));
     } catch (error) {
         console.error('Strategy Generation Failed:', error);
         return {
             reportDate: new Date().toISOString(),
-            title: 'Àü·« º¸°í¼­ »ı¼º ½ÇÆĞ',
-            marketReview: { summary: 'µ¥ÀÌÅÍ ¾øÀ½', leadingSectors: [], laggingSectors: [] },
-            macroOutlook: { summary: 'µ¥ÀÌÅÍ ¾øÀ½', keyRisks: [] },
-            weekAhead: { summary: 'µ¥ÀÌÅÍ ¾øÀ½', keyEvents: [] },
-            aiStrategy: { summary: 'µ¥ÀÌÅÍ ¾øÀ½', recommendedStance: '°ü¸Á ¹× Çö±İ È®º¸', focusSectors: [] }
+            title: 'ì „ëµ ë³´ê³ ì„œ ìƒì„± ì‹¤íŒ¨',
+            marketReview: { summary: 'ë°ì´í„° ì—†ìŒ', leadingSectors: [], laggingSectors: [] },
+            macroOutlook: { summary: 'ë°ì´í„° ì—†ìŒ', keyRisks: [] },
+            weekAhead: { summary: 'ë°ì´í„° ì—†ìŒ', keyEvents: [] },
+            aiStrategy: { summary: 'ë°ì´í„° ì—†ìŒ', recommendedStance: 'ê´€ë§ ë° í˜„ê¸ˆ í™•ë³´', focusSectors: [] }
         };
     }
 };
